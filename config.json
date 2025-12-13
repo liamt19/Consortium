@@ -1,0 +1,18 @@
+[
+	{
+		"name": "Horsie",
+		"path": "C:/Programming/Consortium/horsie.exe",
+		"opts": [
+			"setoption name Hash 32",
+			"setoption name Threads 1"
+		]
+	},
+	{
+		"name": "Viri18",
+		"path": "C:/Programming/Consortium/viridithas-18.0.0-win-x86-64-v4.exe",
+		"opts": [
+			"setoption name Hash 32",
+			"setoption name Threads 1"
+		]
+	}
+]
