@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text;
+using System.Threading.Channels;
 
 namespace Consortium.UCI;
 
@@ -11,19 +12,31 @@ public class Engine
     public string FilePath { get; private set; }
     public string Name { get; private set; }
     public List<string> UCIOpts { get; private set; }
+    public Dictionary<string, string> RemappedCmds { get; private set; }
     public Process Proc { get; private set; }
 
-    public ConcurrentQueue<string> OutputQueue { get; set; }
-    private bool IsReady;
+    private Channel<(string Eng, string Line)> DataChannel;
 
-    public Engine(EngineRunOptions runOpts)
+    private bool UciOK = false;
+
+    public Engine(EngineRunOptions runOpts, Channel<(string Eng, string Line)> dataChannel)
     {
         Name = runOpts.Name;
         FilePath = runOpts.Path;
         UCIOpts = runOpts.Opts;
+        RemappedCmds = [];
 
-        IsReady = false;
+        runOpts.RemappedCmds.ForEach(cmd =>
+        {
+            var splits = cmd.Split(';');
+            this.RemappedCmds.Add(splits[0], splits[1]);
+        });
 
+        DataChannel = dataChannel;
+    }
+
+    public void StartProcess()
+    {
         ProcessStartInfo info = new(FilePath)
         {
             UseShellExecute = false,
@@ -32,8 +45,6 @@ public class Engine
             CreateNoWindow = true
         };
 
-        OutputQueue = [];
-
         Proc = new()
         {
             StartInfo = info,
@@ -41,31 +52,35 @@ public class Engine
         };
 
         Proc.OutputDataReceived += OnOutputReceived;
+        Proc.Exited += OnTerminated;
         Proc.Start();
         Proc.BeginOutputReadLine();
 
-        SendUCIOpts();
+        SendUCIOpts().Wait();
     }
 
-    private void SendUCIOpts()
+
+    private async Task SendUCIOpts()
     {
         SendCommand("uci");
+        await WaitUntil(() => UciOK, 1500);
+
+        SendCommand("isready");
         foreach (var opt in UCIOpts)
             SendCommand(opt);
 
+        SendCommand("ucinewgame");
         SendCommand("isready");
     }
 
+    private void OnTerminated(object? sender, EventArgs e) => Log($"{Name} terminated with code {Proc.ExitCode}");
     private void OnOutputReceived(object sender, DataReceivedEventArgs e)
     {
         if (e.Data != null)
         {
-            OutputQueue.Enqueue(e.Data);
-            
-            if (e.Data.Equals("readyok", StringComparison.OrdinalIgnoreCase))
-            {
-                IsReady = true;
-            }
+            DataChannel.Writer.TryWrite((Name, e.Data));
+            if (e.Data.ToLower().StartsWith("uciok"))
+                UciOK = true;
         }
     }
 
@@ -73,10 +88,16 @@ public class Engine
     {
         Debug.Assert(Proc != null && !Proc.HasExited, "what");
 
-        Console.WriteLine($"{Name} >> {command}");
+        if (RemappedCmds.ContainsKey(command))
+            command = RemappedCmds[command];
 
-        Proc.StandardInput.WriteLine(command);
-        Proc.StandardInput.Flush();
+        Console.WriteLine($"{Name,8} << {command}");
+
+        try
+        {
+            Proc.StandardInput.WriteLine(command);
+            Proc.StandardInput.Flush();
+        } catch { }
     }
 
     public override string ToString() => Name;

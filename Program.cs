@@ -1,4 +1,4 @@
-﻿using System;
+﻿global using static Consortium.Utils;
 
 namespace Consortium;
 
@@ -17,7 +17,7 @@ internal class Program
         do
         {
             input = Console.ReadLine();
-            controller.SendToAll(input);
+            controller.ProcessInput(input);
         } while (input?.ToLower() != "exit");
     }
 }

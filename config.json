@@ -1,18 +1,48 @@
-[
-	{
-		"name": "Horsie",
-		"path": "C:/Programming/Consortium/horsie.exe",
-		"opts": [
-			"setoption name Hash 32",
-			"setoption name Threads 1"
-		]
-	},
-	{
-		"name": "Viri18",
-		"path": "C:/Programming/Consortium/viridithas-18.0.0-win-x86-64-v4.exe",
-		"opts": [
-			"setoption name Hash 32",
-			"setoption name Threads 1"
-		]
-	}
-]
+{
+	"default_opts": [
+		"setoption name Hash value 32",
+		"setoption name Threads value 1"
+	],
+	"engines": [
+		{
+			"name": "horsie",
+			"path": "C:/Programming/Consortium/horsie-1.1.6-native.exe",
+			"opts": [
+				"setoption name Hash value 64"
+			],
+			"remapped_cmds": [
+
+			]
+		},
+		{
+			"name": "viri18",
+			"path": "C:/Programming/Consortium/viridithas-18.0.0-win-x86-64-v4.exe",
+			"opts": [
+
+			],
+			"remapped_cmds": [
+				"eval;raweval"
+			]
+		},
+		{
+			"name": "sp7040",
+			"path": "C:/Programming/Consortium/stormphrax-7.0.40-native.exe",
+			"opts": [
+
+			],
+			"remapped_cmds": [
+				"eval;raweval"
+			]
+		},
+		{
+			"name": "pnco181",
+			"path": "C:/Programming/Consortium/pawnocchio-1.8.1-windows-x86_64_znver4.exe",
+			"opts": [
+
+			],
+			"remapped_cmds": [
+				"eval;nneval"
+			]
+		}
+	]
+}

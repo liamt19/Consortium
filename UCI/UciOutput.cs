@@ -1,19 +1,35 @@
 ﻿using System;
 using System.Collections.Generic;
 using System.IO;
+using System.Linq;
 using System.Text;
 using System.Text.RegularExpressions;
 
 namespace Consortium.UCI;
 
-public partial struct UciOutput(string line)
+public readonly struct UciOutput(string line)
 {
+    private const int NUM_PV_MOVES = 16;
+
     private static readonly Regex ScoreRegex = new(@" score (\w+) (-?\d+)", RegexOptions.Compiled);
     private static readonly Regex DepthRegex = new(@" depth (\d+)", RegexOptions.Compiled);
     private static readonly Regex SelDepthRegex = new(@" seldepth (\d+)", RegexOptions.Compiled);
     private static readonly Regex NodesRegex = new(@" nodes (\d+)", RegexOptions.Compiled);
     private static readonly Regex TimeRegex = new(@" time (\d+)", RegexOptions.Compiled);
     private static readonly Regex PVRegex = new(@" pv (.+)", RegexOptions.Compiled);
+
+    public static bool IsBlacklisted(string str)
+    {
+        str = str.ToLower();
+
+        if (str.StartsWith("option name "))
+            return true;
+
+        if (str.StartsWith("id "))
+            return true;
+
+        return false;
+    }
 
     public string Line { get; } = line;
     public bool IsInfo => Line.StartsWith("info ") && !Line.StartsWith("info string");
@@ -22,7 +38,7 @@ public partial struct UciOutput(string line)
 
     public bool HasSelDepth => SelDepth > 0;
 
-    public bool ShouldPrint => IsInfo && !IsBound && !IsCurrMove;
+    public bool ShouldPrint => !IsBound && !IsCurrMove;
     public bool ShouldIncDepth => IsInfo && !IsBound && !IsCurrMove;
 
     public string Score
@@ -32,7 +48,7 @@ public partial struct UciOutput(string line)
             Match match = ScoreRegex.Match(Line);
             if (match.Success)
             {
-                var units = match.Groups[1].Value.Contains("mate") ? "#" : "";
+                var units = match.Groups[1].Value.Contains("mate") ? "#" : "cp ";
                 var num = int.Parse(match.Groups[2].Value);
                 return $"{units}{num}";
             }
@@ -50,17 +66,15 @@ public partial struct UciOutput(string line)
     private string GetMoves(int n)
     {
         var moves = PV.Split(' ');
-        if (moves.Length <= n)
-            return PV;
-        return string.Join(' ', moves, 0, n);
+        return string.Join(' ', moves, 0, Math.Min(n, moves.Length));
     }
 
     private string DepthStr => $"D: {Depth,3}";
     private string SelDepthStr => $"/{(HasSelDepth ? SelDepth.ToString() : string.Empty),-3}";
-    private string ScoreStr => $"S: {Score,6}";
-    private string NodeStr => $"N: {Nodes,12}";
+    private string ScoreStr => $"S: {Score,9}";
+    private string NodeStr => $"N: {Nodes,11}";
     private string TimeStr => $"T: {Time,8}";
-    private string PVStr => $"M: {GetMoves(8)}";
+    private string PVStr => $"M: {GetMoves(NUM_PV_MOVES)}";
 
     public override string ToString()
     {

@@ -1,5 +1,8 @@
 ﻿using Consortium.UCI;
+using System.Collections.Concurrent;
 using System.Diagnostics;
+using System.Threading.Channels;
+using System.Xml.Linq;
 
 namespace Consortium;
 
@@ -7,87 +10,63 @@ public class Controller
 {
     private const int ThreadDelay = 10;
 
-    public List<Engine> Engines { get; set; }
+    private List<Engine> Engines = [];
+    private ConcurrentDictionary<string, List<UciOutput>> ImmediateOutputData = [];
+    private ConcurrentDictionary<string, List<UciOutput>> InfoOutputData = [];
+    private ConcurrentDictionary<string, int> ReachedDepths = [];
 
-    public Dictionary<string, List<UciOutput>> OutputData;
-    public Dictionary<string, int> ReachedDepths;
+    private readonly Channel<(string Eng, string Line)> DataChannel = Channel.CreateUnbounded<(string, string)>();
 
     private Task? ReaderTask;
     private Task? WriterTask;
 
-    private CancellationTokenSource ReaderTokenSource;
-    private CancellationTokenSource WriterTokenSource;
-
-    //private CancellationToken ReaderCancellation;
-    //private CancellationToken WriterCancellation;
-
+    private CancellationTokenSource ReaderTokenSource = new();
+    private CancellationTokenSource WriterTokenSource = new();
 
     public Controller()
     {
-        Engines = [];
-        OutputData = [];
-        ReachedDepths = [];
-
-        ReaderTokenSource = new CancellationTokenSource();
-        WriterTokenSource = new CancellationTokenSource();
-
         LoadEngines();
+        ResetOutputData(false);
 
-        ResetOutputData();
+        foreach (var eng in Engines)
+        {
+            eng.StartProcess();
+        }
 
-        //ReaderCancellation = new();
-        //WriterCancellation = new();
-
-        //ReaderTask = Task.Run(ReaderTaskProc, ReaderCancellation);
-        //WriterTask = Task.Run(ImmediateOutputTaskProc, WriterCancellation);
-        //WriterTask = Task.Run(DepthSynchronizedOutputTaskProc, WriterCancellation);
+        StopTasks().Wait();
+        StartTasks(true);
     }
 
-    public void LoadEngines()
+    private void LoadEngines()
     {
-        Utils.ReadConfig().ForEach(opt =>
+        var cfg = Utils.ReadConfig();
+        cfg.ForEach(opt =>
         {
-            Engines.Add(new Engine(opt));
+            Engines.Add(new Engine(opt, DataChannel));
         });
     }
 
-    private void StartTasks(bool immediateWrite = true)
+    public void ProcessInput(string command)
     {
-        ReaderTask = Task.Run(() => ReaderTaskProc(ReaderTokenSource.Token));
-
-        if (immediateWrite)
+        if (Insights.IsBreakdownCommand(command))
         {
-            WriterTask = Task.Run(() => ImmediateOutputTaskProc(WriterTokenSource.Token));
+            Insights.BreakdownOf(InfoOutputData, command);
         }
         else
         {
-            WriterTask = Task.Run(() => DepthSynchronizedOutputTaskProc(WriterTokenSource.Token));
+            SendToAll(command);
         }
     }
 
-    private void StopTasks()
+    private void SendToAll(string command)
     {
-        if (ReaderTask != null && !ReaderTask.IsCompleted)
-        {
-            ReaderTokenSource.Cancel();
-            ReaderTask.Wait();
-        }
+        StopTasks().Wait();
 
-        if (WriterTask != null && !WriterTask.IsCompleted)
-        {
-            WriterTokenSource.Cancel();
-            WriterTask.Wait();
-        }
-    }
-
-    public void SendToAll(string command)
-    {
-        StopTasks();
-
-        bool immediate = !command.ToLower().StartsWith("go ");
+        bool immediate = !command.ToLower().StartsWith("go");
         StartTasks(immediate);
 
-        ResetOutputData();
+        bool isStop = command.ToLower().StartsWith("stop");
+        ResetOutputData(isStop);
 
         foreach (var eng in Engines)
         {
@@ -95,75 +74,106 @@ public class Controller
         }
     }
 
-    private void ResetOutputData()
+    private void ResetOutputData(bool isStop)
     {
-        OutputData.Clear();
+        ImmediateOutputData.Clear();
+        foreach (var eng in Engines.Select(x => x.Name))
+        {
+            if (!ImmediateOutputData.TryAdd(eng, []))
+                ImmediateOutputData[eng].Clear();
+        }
+
+        if (isStop)
+            return;
+
+        InfoOutputData.Clear();
         ReachedDepths.Clear();
 
-        foreach (var eng in Engines)
+        foreach (var eng in Engines.Select(x => x.Name))
         {
-            if (OutputData.TryGetValue(eng.Name, out List<UciOutput>? v))
+            if (!InfoOutputData.TryAdd(eng, []))
+                InfoOutputData[eng].Clear();
+
+            if (!ReachedDepths.TryAdd(eng, 0))
+                ReachedDepths[eng] = 0;
+        }
+    }
+
+    private void StartTasks(bool immediateWrite = true)
+    {
+        ReaderTokenSource.Dispose();
+        ReaderTokenSource = new();
+
+        WriterTokenSource.Dispose();
+        WriterTokenSource = new();
+
+        ReaderTask = Task.Run(() => ReaderTaskProc(ReaderTokenSource.Token));
+
+        Func<CancellationToken, Task> writeProc = immediateWrite ? ImmediateOutputTaskProc : DepthSynchronizedOutputTaskProc;
+        WriterTask = Task.Run(() => writeProc(WriterTokenSource.Token), WriterTokenSource.Token);
+    }
+
+    private async Task StopTasks()
+    {
+        if (ReaderTask != null && !ReaderTask.IsCompleted)
+        {
+            try
             {
-                v.Clear();
-                ReachedDepths[eng.Name] = 0;
+                await ReaderTokenSource.CancelAsync();
+                await ReaderTask;
             }
-            else
+            catch (OperationCanceledException) { }
+        }
+
+        if (WriterTask != null && !WriterTask.IsCompleted)
+        {
+            try
             {
-                OutputData.Add(eng.Name, []);
-                ReachedDepths.Add(eng.Name, 0);
+                await WriterTokenSource.CancelAsync();
+                await WriterTask;
             }
+            catch (OperationCanceledException) { }
         }
     }
 
     private async Task ReaderTaskProc(CancellationToken token)
     {
-        while (!token.IsCancellationRequested)
+        await foreach (var (engine, line) in DataChannel.Reader.ReadAllAsync(token))
         {
-            foreach (var eng in Engines)
+            UciOutput uc = new(line);
+            ImmediateOutputData[engine].Add(uc);
+
+            if (uc.IsInfo)
+                InfoOutputData[engine].Add(uc);
+
+
+            if (uc.ShouldIncDepth && uc.Depth > ReachedDepths[engine])
             {
-                var name = eng.Name;
-
-                while (eng.OutputQueue.TryDequeue(out var outStr))
-                {
-                    UciOutput uc = new(outStr);
-                    OutputData[name].Add(uc);
-
-                    if (uc.ShouldPrint) 
-                        Debug.WriteLine($"{name} >> {uc}");
-
-                    if (uc.ShouldIncDepth && uc.Depth > ReachedDepths[name])
-                    {
-                        ReachedDepths[name] = Math.Max(ReachedDepths[name], uc.Depth);
-                        Debug.WriteLine(string.Join(", ", Engines.Select(x => x.Name).Select(x => $"{x}={ReachedDepths[x]}")));
-                    }
-                }
+                ReachedDepths[engine] = Math.Max(ReachedDepths[engine], uc.Depth);
             }
-
-            await Task.Delay(ThreadDelay, token);
         }
     }
 
     private async Task DepthSynchronizedOutputTaskProc(CancellationToken token)
     {
         int printedDepth = 0;
-
         while (!token.IsCancellationRequested)
         {
+            await Task.Delay(ThreadDelay, token);
+
             if (Engines.Any(x => ReachedDepths[x.Name] <= printedDepth))
                 continue;
 
             printedDepth++;
             foreach (var eng in Engines.Select(x => x.Name))
             {
-                var outForDepth = OutputData[eng].Last(u => u.IsInfo && u.Depth == printedDepth);
-                if (outForDepth.ShouldPrint)
+                var outForDepth = InfoOutputData[eng].Last(u => u.Depth == printedDepth);
+                if (outForDepth.IsInfo && outForDepth.ShouldPrint)
                 {
-                    Console.WriteLine($"{eng} >> {outForDepth}");
+                    Log($"{eng,8} >> {outForDepth}");
                 }
             }
-
-            Console.WriteLine();
-            await Task.Delay(ThreadDelay, token);
+            Log();
         }
     }
 
@@ -173,13 +183,25 @@ public class Controller
         {
             foreach (var eng in Engines.Select(x => x.Name))
             {
-                int i = OutputData[eng].FindIndex(u => u.ShouldPrint);
-                if (i == -1)
+                if (!ImmediateOutputData.ContainsKey(eng))
                     continue;
 
-                var uc = OutputData[eng][i];
-                Console.WriteLine($"{eng} >> {uc}");
-                OutputData[eng].RemoveAt(i);
+                var dataList = ImmediateOutputData[eng];
+                int i = dataList.FindIndex(u => u.ShouldPrint);
+                if (i == -1)
+                    continue;
+                
+                var uc = dataList[i];
+                if (uc.IsInfo)
+                {
+                    Log($"{eng,8} >> {uc}");
+                }
+                else if (!UciOutput.IsBlacklisted(uc.Line))
+                {
+                    Log($"{eng,8} >> {uc.Line}");
+                }
+
+                dataList.RemoveAt(i);
             }
 
             await Task.Delay(ThreadDelay, token);
