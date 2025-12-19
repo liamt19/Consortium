@@ -8,6 +8,7 @@ namespace Consortium;
 
 public class Controller
 {
+    private const bool ALWAYS_PRINT = false;
 
     private List<Engine> Engines = [];
     private readonly ConcurrentDictionary<string, List<UciOutput>> ImmediateOutputData = [];
@@ -41,7 +42,7 @@ public class Controller
 
     private void LoadEngines()
     {
-        var cfg = Utils.ReadConfig();
+        var cfg = Utils.GetConfig();
         cfg.ForEach(opt =>
         {
             Engines.Add(new Engine(opt, DataChannel));
@@ -178,7 +179,7 @@ public class Controller
                 var outForDepth = dataList.Last(u => u.Depth == printedDepth);
                 if (outForDepth.IsInfo && outForDepth.ShouldPrint)
                 {
-                    Log($"{eng,8} >> {outForDepth}");
+                    Log($"{FormatEngineName(eng)} >> {outForDepth}");
                 }
             }
             Log();
@@ -200,8 +201,8 @@ public class Controller
                 while (cursor < dataList.Count)
                 {
                     var uc = dataList[cursor];
-                    if (uc.IsPrintable && uc.ShouldPrint)
-                        Log($"{eng,8} >> {uc}");
+                    if ((uc.IsPrintable && uc.ShouldPrint) || ALWAYS_PRINT)
+                        Log($"{FormatEngineName(eng)} >> {uc}");
 
                     cursor++;
                 }
@@ -212,29 +213,4 @@ public class Controller
         }
     }
 
-#if NO
-    private async Task _ImmediateOutputTaskProc(CancellationToken token)
-    {
-        while (!token.IsCancellationRequested)
-        {
-            await ImmediateDataSignal.WaitAsync(token);
-
-            foreach (var eng in Engines.Select(x => x.Name))
-            {
-                if (!ImmediateOutputData.TryGetValue(eng, out var dataList))
-                    continue;
-
-                int i = dataList.FindIndex(u => u.ShouldPrint);
-                if (i == -1)
-                    continue;
-                
-                if (dataList[i].IsPrintable)
-                    Log($"{eng,8} >> {dataList[i]}");
-
-                dataList.RemoveAt(i);
-            }
-
-        }
-    }
-#endif
 }

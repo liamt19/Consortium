@@ -108,6 +108,7 @@ public static class Insights
             Console.WriteLine();
         }
 
+        Console.WriteLine();
     }
 
     public static void PrintBreakdown(List<UciOutput> outputs, string field = FIELD_SCORE)

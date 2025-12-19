@@ -91,7 +91,7 @@ public class Engine
         if (RemappedCmds.ContainsKey(command))
             command = RemappedCmds[command];
 
-        Console.WriteLine($"{Name,8} << {command}");
+        Console.WriteLine($"{FormatEngineName(Name)} << {command}");
 
         try
         {

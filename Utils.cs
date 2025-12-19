@@ -10,7 +10,15 @@ namespace Consortium;
 public static class Utils
 {
     private static readonly Regex SetoptionRegex = new(@"^setoption name (.+) value (.+)$", RegexOptions.Compiled);
-    public static List<EngineRunOptions> ReadConfig()
+
+    private static List<EngineRunOptions>? CachedEngineRunOptions = null;
+    public static List<EngineRunOptions> GetConfig()
+    {
+        CachedEngineRunOptions ??= ReadConfig();
+        return CachedEngineRunOptions;
+    }
+
+    private static List<EngineRunOptions> ReadConfig()
     {
         string json = File.ReadAllText("config.json");
         var cfg = JsonConvert.DeserializeObject<EngineConfig>(json) ?? throw new InvalidOperationException("Invalid config?");
@@ -36,6 +44,12 @@ public static class Utils
     {
         Console.WriteLine(s);
         Debug.WriteLine(s);
+    }
+
+    public static string FormatEngineName(string name)
+    {
+        int nChars = GetConfig().Max(e => e.Name.Length);
+        return name.PadLeft(nChars);
     }
 
     public static async Task WaitUntil(Func<bool> condition, int timeout = -1)
