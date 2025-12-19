@@ -1,6 +1,6 @@
 {
 	"default_opts": [
-		"setoption name Hash value 32",
+		"setoption name Hash value 128",
 		"setoption name Threads value 1"
 	],
 	"engines": [
@@ -8,7 +8,7 @@
 			"name": "horsie",
 			"path": "C:/Programming/Consortium/horsie-1.1.6-native.exe",
 			"opts": [
-				"setoption name Hash value 64"
+				
 			],
 			"remapped_cmds": [
 

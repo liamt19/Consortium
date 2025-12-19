@@ -43,11 +43,17 @@ public static class Insights
         var keys = dict.Keys.ToList();
         keys.Insert(0, "depth");
         Console.Write(string.Join(" ", keys));
+        Console.WriteLine();
 
         var outpList = dict.Values.Select(x => x.Where(y => !y.IsBound && !y.IsCurrMove).ToList()).ToList();
-        int maxDepth = outpList.SelectMany(x => x).Where(x => !x.IsBound && !x.IsCurrMove).Max(x => x.Depth);
+        
+        var flat = outpList.SelectMany(x => x).Where(x => !x.IsBound && !x.IsCurrMove);
+        if (!flat.Any())
+            return;
 
-        for (int depth = 0; depth <= maxDepth; depth++)
+        int maxDepth = flat.Max(x => x.Depth);
+
+        for (int depth = 1; depth <= maxDepth; depth++)
         {
             Console.Write($"{depth} ");
             for (int eng = 0; eng < outpList.Count; eng++)
@@ -58,7 +64,7 @@ public static class Insights
                 //  No output at this depth for this eng
                 if (!thisOutp.Any(x => (x.IsInfo && x.Depth == depth)))
                 {
-                    outStr = "";
+                    outStr = "0";
                     goto Skip;
                 }
 

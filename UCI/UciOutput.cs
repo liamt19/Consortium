@@ -33,6 +33,7 @@ public readonly struct UciOutput(string line)
 
     public string Line { get; } = line;
     public bool IsInfo => Line.StartsWith("info ") && !Line.StartsWith("info string");
+    public bool IsPrintable => IsInfo || !IsBlacklisted(Line);
     public bool IsBound => Line.Contains("upperbound") || Line.Contains("lowerbound");
     public bool IsCurrMove => Line.Contains("currmove");
 
@@ -78,7 +79,10 @@ public readonly struct UciOutput(string line)
 
     public override string ToString()
     {
-        List<string> strs = 
+        if (!IsInfo)
+            return Line;
+
+        List<string> strs =
         [
             DepthStr + SelDepthStr,
             ScoreStr,

@@ -8,12 +8,12 @@ namespace Consortium;
 
 public class Controller
 {
-    private const int ThreadDelay = 10;
 
     private List<Engine> Engines = [];
-    private ConcurrentDictionary<string, List<UciOutput>> ImmediateOutputData = [];
-    private ConcurrentDictionary<string, List<UciOutput>> InfoOutputData = [];
-    private ConcurrentDictionary<string, int> ReachedDepths = [];
+    private readonly ConcurrentDictionary<string, List<UciOutput>> ImmediateOutputData = [];
+    private readonly ConcurrentDictionary<string, List<UciOutput>> InfoOutputData = [];
+    private readonly ConcurrentDictionary<string, int> ReachedDepths = [];
+    private readonly ConcurrentDictionary<string, int> DataCursors = [];
 
     private readonly Channel<(string Eng, string Line)> DataChannel = Channel.CreateUnbounded<(string, string)>();
 
@@ -22,6 +22,8 @@ public class Controller
 
     private CancellationTokenSource ReaderTokenSource = new();
     private CancellationTokenSource WriterTokenSource = new();
+
+    private readonly SemaphoreSlim DataReadSignal = new(0);
 
     public Controller()
     {
@@ -86,11 +88,15 @@ public class Controller
         if (isStop)
             return;
 
+        DataCursors.Clear();
         InfoOutputData.Clear();
         ReachedDepths.Clear();
 
         foreach (var eng in Engines.Select(x => x.Name))
         {
+            if (!DataCursors.TryAdd(eng, 0))
+                DataCursors[eng] = 0;
+
             if (!InfoOutputData.TryAdd(eng, []))
                 InfoOutputData[eng].Clear();
 
@@ -146,11 +152,10 @@ public class Controller
             if (uc.IsInfo)
                 InfoOutputData[engine].Add(uc);
 
-
             if (uc.ShouldIncDepth && uc.Depth > ReachedDepths[engine])
-            {
                 ReachedDepths[engine] = Math.Max(ReachedDepths[engine], uc.Depth);
-            }
+
+            DataReadSignal.Release();
         }
     }
 
@@ -159,7 +164,7 @@ public class Controller
         int printedDepth = 0;
         while (!token.IsCancellationRequested)
         {
-            await Task.Delay(ThreadDelay, token);
+            await DataReadSignal.WaitAsync(token);
 
             if (Engines.Any(x => ReachedDepths[x.Name] <= printedDepth))
                 continue;
@@ -167,7 +172,10 @@ public class Controller
             printedDepth++;
             foreach (var eng in Engines.Select(x => x.Name))
             {
-                var outForDepth = InfoOutputData[eng].Last(u => u.Depth == printedDepth);
+                if (!InfoOutputData.TryGetValue(eng, out var dataList))
+                    continue;
+
+                var outForDepth = dataList.Last(u => u.Depth == printedDepth);
                 if (outForDepth.IsInfo && outForDepth.ShouldPrint)
                 {
                     Log($"{eng,8} >> {outForDepth}");
@@ -183,28 +191,50 @@ public class Controller
         {
             foreach (var eng in Engines.Select(x => x.Name))
             {
-                if (!ImmediateOutputData.ContainsKey(eng))
+                if (!ImmediateOutputData.TryGetValue(eng, out var dataList))
                     continue;
 
-                var dataList = ImmediateOutputData[eng];
+                if (!DataCursors.TryGetValue(eng, out int cursor))
+                    continue;
+
+                while (cursor < dataList.Count)
+                {
+                    var uc = dataList[cursor];
+                    if (uc.IsPrintable && uc.ShouldPrint)
+                        Log($"{eng,8} >> {uc}");
+
+                    cursor++;
+                }
+                DataCursors[eng] = cursor;
+            }
+
+            await Task.Yield();
+        }
+    }
+
+#if NO
+    private async Task _ImmediateOutputTaskProc(CancellationToken token)
+    {
+        while (!token.IsCancellationRequested)
+        {
+            await ImmediateDataSignal.WaitAsync(token);
+
+            foreach (var eng in Engines.Select(x => x.Name))
+            {
+                if (!ImmediateOutputData.TryGetValue(eng, out var dataList))
+                    continue;
+
                 int i = dataList.FindIndex(u => u.ShouldPrint);
                 if (i == -1)
                     continue;
                 
-                var uc = dataList[i];
-                if (uc.IsInfo)
-                {
-                    Log($"{eng,8} >> {uc}");
-                }
-                else if (!UciOutput.IsBlacklisted(uc.Line))
-                {
-                    Log($"{eng,8} >> {uc.Line}");
-                }
+                if (dataList[i].IsPrintable)
+                    Log($"{eng,8} >> {dataList[i]}");
 
                 dataList.RemoveAt(i);
             }
 
-            await Task.Delay(ThreadDelay, token);
         }
     }
+#endif
 }
