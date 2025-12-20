@@ -16,7 +16,7 @@ internal class Program
         string input;
         do
         {
-            input = Console.ReadLine();
+            input = ReadConsoleLine();
             controller.ProcessInput(input);
         } while (input?.ToLower() != "exit");
     }

@@ -64,4 +64,19 @@ public static class Utils
         await Task.WhenAny(condTask, timeoutTask);
     }
 
+
+    public static string ReadConsoleLine()
+    {
+        string line = Console.ReadLine()!;
+        if (Console.IsOutputRedirected)
+            return line;
+
+        Console.SetCursorPosition(0, Console.CursorTop - 1);
+        Console.WriteLine(new string(' ', Console.WindowWidth));
+        Console.WriteLine(line);
+        Console.SetCursorPosition(0, Console.CursorTop);
+
+        return line;
+    }
+
 }
