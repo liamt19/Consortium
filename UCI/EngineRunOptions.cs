@@ -7,6 +7,9 @@ namespace Consortium.UCI;
 
 public class EngineConfig
 {
+    [JsonProperty("sync_by_depth")]
+    public bool SyncByDepth { get; set; } = new();
+
     [JsonProperty("default_opts")]
     public List<string> DefaultOpts { get; set; } = new();
 

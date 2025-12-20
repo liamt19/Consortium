@@ -9,6 +9,7 @@ namespace Consortium;
 public class Controller
 {
     private const bool ALWAYS_PRINT = false;
+    private bool SyncByDepth = true;
 
     private List<Engine> Engines = [];
     private readonly ConcurrentDictionary<string, List<UciOutput>> ImmediateOutputData = [];
@@ -42,11 +43,12 @@ public class Controller
 
     private void LoadEngines()
     {
-        var cfg = Utils.GetConfig();
-        cfg.ForEach(opt =>
+        var cfg = Utils.EngineConfigs;
+        cfg.Engines.ForEach(opt =>
         {
             Engines.Add(new Engine(opt, DataChannel));
         });
+        SyncByDepth = cfg.SyncByDepth;
     }
 
     public void ProcessInput(string command)
@@ -65,7 +67,8 @@ public class Controller
     {
         StopTasks().Wait();
 
-        bool immediate = !command.ToLower().StartsWith("go");
+        // Only "go" cmds are depth-sync'd, and only if SyncByDepth == true
+        bool immediate = !(command.ToLower().StartsWith("go") && SyncByDepth);
         StartTasks(immediate);
 
         bool isStop = command.ToLower().StartsWith("stop");

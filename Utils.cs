@@ -11,14 +11,11 @@ public static class Utils
 {
     private static readonly Regex SetoptionRegex = new(@"^setoption name (.+) value (.+)$", RegexOptions.Compiled);
 
-    private static List<EngineRunOptions>? CachedEngineRunOptions = null;
-    public static List<EngineRunOptions> GetConfig()
-    {
-        CachedEngineRunOptions ??= ReadConfig();
-        return CachedEngineRunOptions;
-    }
+    private static EngineConfig? CachedEngineConfig = null;
+    public static EngineConfig EngineConfigs => (CachedEngineConfig ??= ReadConfig());
+    public static List<EngineRunOptions> EngineRunConfigs => EngineConfigs.Engines;
 
-    private static List<EngineRunOptions> ReadConfig()
+    private static EngineConfig ReadConfig()
     {
         string json = File.ReadAllText("config.json");
         var cfg = JsonConvert.DeserializeObject<EngineConfig>(json) ?? throw new InvalidOperationException("Invalid config?");
@@ -36,7 +33,7 @@ public static class Utils
             }
         }
 
-        return cfg.Engines;
+        return cfg;
     }
 
     public static void Log() => Log("");
@@ -48,7 +45,7 @@ public static class Utils
 
     public static string FormatEngineName(string name)
     {
-        int nChars = GetConfig().Max(e => e.Name.Length);
+        int nChars = EngineRunConfigs.Max(e => e.Name.Length);
         return name.PadLeft(nChars);
     }
 
