@@ -1,8 +1,6 @@
 ﻿using Consortium.UCI;
 using Newtonsoft.Json;
-using System.Collections.Generic;
 using System.Diagnostics;
-using System.Linq;
 using System.Text.RegularExpressions;
 
 namespace Consortium.Misc;
@@ -38,7 +36,7 @@ public static class Utils
         return cfg;
     }
 
-    public static void Log() => Log("");
+    public static void Log() => Log(string.Empty);
     public static void Log(string s)
     {
         if (PrintWithTimestamps)
@@ -58,18 +56,6 @@ public static class Utils
     {
         int nChars = EngineRunConfigs.Max(e => e.Name.Length);
         return name.PadLeft(nChars);
-    }
-
-    public static async Task WaitUntil(Func<bool> condition, int timeout = -1)
-    {
-        var timeoutTask = Task.Delay(timeout);
-        var condTask = Task.Run(async () =>
-        {
-            while (!condition()) 
-                await Task.Delay(25);
-        });
-
-        await Task.WhenAny(condTask, timeoutTask);
     }
 
 

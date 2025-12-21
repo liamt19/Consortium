@@ -1,9 +1,7 @@
 ﻿using Consortium.Misc;
 using Consortium.UCI;
 using System.Collections.Concurrent;
-using System.Diagnostics;
 using System.Threading.Channels;
-using System.Xml.Linq;
 
 namespace Consortium.Core;
 
@@ -43,9 +41,10 @@ public class Controller
             eng.StartProcess();
         });
 
-        Parallel.ForEachAsync(_engines, async (eng, ct) =>
+        // separate these for formatting's sake
+        Parallel.ForEach(_engines, eng =>
         {
-            await eng.SendUCIOpts();
+            eng.SendUCIOpts();
         });
     }
 
@@ -84,10 +83,8 @@ public class Controller
         bool isStop = command.StartsWithIgnoreCase("stop");
         ResetOutputData(isStop);
 
-        foreach (var eng in _engines)
-        {
-            eng.SendCommand(command);
-        }
+        Parallel.ForEach(_engines, eng => eng.SendCommand(command));
+        Log();
     }
 
     private void ResetOutputData(bool isStop)

@@ -1,9 +1,4 @@
-﻿using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Text;
-using System.Text.RegularExpressions;
+﻿using System.Diagnostics;
 using System.Threading.Channels;
 
 namespace Consortium.UCI;
@@ -16,7 +11,7 @@ public class Engine
     public Dictionary<string, string> RemappedCmds { get; private set; }
     public Process Proc { get; private set; }
 
-    private Channel<(string Eng, UciOutput Line)> _dataChannel;
+    private readonly Channel<(string Eng, UciOutput Line)> _dataChannel;
     private TaskCompletionSource<string>? _expectTcs;
     private Predicate<string>? _expectPredicate;
 
@@ -78,10 +73,7 @@ public class Engine
         if (e.Data == null) return;
 
         var uc = new UciOutput(e.Data);
-
-        _dataChannel.Writer.WriteAsync((Name, uc)).GetAwaiter().GetResult();
-        //_dataChannel.Writer.TryWrite((Name, uc))
-
+        _dataChannel.Writer.TryWrite((Name, uc));
         if (_expectPredicate?.Invoke(e.Data) == true)
         {
             if (_expectTcs?.TrySetResult(e.Data) == false)
