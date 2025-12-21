@@ -1,5 +1,6 @@
 {
 	"sync_by_depth": true,
+	"print_all_output": true,
 	"default_opts": [
 		"setoption name Hash value 128",
 		"setoption name Threads value 1"

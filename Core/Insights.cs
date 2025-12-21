@@ -1,10 +1,11 @@
-﻿using Consortium.UCI;
+﻿using Consortium.Misc;
+using Consortium.UCI;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Text;
 
-namespace Consortium;
+namespace Consortium.Core;
 
 public static class Insights
 {

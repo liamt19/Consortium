@@ -1,4 +1,6 @@
-﻿global using static Consortium.Utils;
+﻿global using static Consortium.Misc.Utils;
+using Consortium.Core;
+using System.Text;
 
 namespace Consortium;
 
@@ -6,6 +8,8 @@ internal class Program
 {
     static void Main(string[] args)
     {
+        Console.OutputEncoding = Encoding.UTF8;
+
         InputLoop();
     }
 

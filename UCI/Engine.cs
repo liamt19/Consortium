@@ -16,11 +16,11 @@ public class Engine
     public Dictionary<string, string> RemappedCmds { get; private set; }
     public Process Proc { get; private set; }
 
-    private Channel<(string Eng, string Line)> _dataChannel;
+    private Channel<(string Eng, UciOutput Line)> _dataChannel;
     private TaskCompletionSource<string>? _expectTcs;
     private Predicate<string>? _expectPredicate;
 
-    public Engine(EngineRunOptions runOpts, Channel<(string Eng, string Line)> dataChannel)
+    public Engine(EngineRunOptions runOpts, Channel<(string Eng, UciOutput Line)> dataChannel)
     {
         Name = runOpts.Name;
         FilePath = runOpts.Path;
@@ -56,29 +56,12 @@ public class Engine
         Proc.Exited += OnTerminated;
         Proc.Start();
         Proc.BeginOutputReadLine();
-
-        SendUCIOpts().GetAwaiter().GetResult();
+        Log($"{FormatEngineName(Name)} pid {Proc.Id}");
     }
 
-#if NO
-    private async Task SendUCIOpts()
+    public async Task SendUCIOpts()
     {
-        SendCommand("uci");
-        SendAndExpect("uci", s => s == "uciok", 1500);
-        await WaitUntil(() => UciOK, 1500);
-
-        SendCommand("isready");
-        foreach (var opt in UCIOpts)
-            SendCommand(opt);
-
-        SendCommand("ucinewgame");
-        SendCommand("isready");
-    }
-#endif
-
-    private async Task SendUCIOpts()
-    {
-        await SendAndExpect("uci", "uciok");
+        await SendAndExpect("uci", "uciok", 1000);
         await SendAndExpect("isready", "readyok");
 
         foreach (var opt in UCIOpts)
@@ -94,11 +77,15 @@ public class Engine
     {
         if (e.Data == null) return;
 
-        _dataChannel.Writer.TryWrite((Name, e.Data));
+        var uc = new UciOutput(e.Data);
+
+        _dataChannel.Writer.WriteAsync((Name, uc)).GetAwaiter().GetResult();
+        //_dataChannel.Writer.TryWrite((Name, uc))
+
         if (_expectPredicate?.Invoke(e.Data) == true)
         {
             if (_expectTcs?.TrySetResult(e.Data) == false)
-                Log("uh oh");
+                throw new Exception($"_expectTcs.TrySetResult({e.Data}) failed??");
         }
     }
 
@@ -109,7 +96,7 @@ public class Engine
         if (RemappedCmds.TryGetValue(command, out string? remapped))
             command = remapped;
 
-        Log($"{RightNow} {FormatEngineName(Name)} << {command}");
+        Log($"{FormatEngineName(Name)} << {command}");
 
         try
         {
@@ -118,7 +105,18 @@ public class Engine
         } catch { }
     }
 
-    private async Task<string> SendAndExpect(string command, string expect, int timeoutMs = 250)
+    private async Task<string> SendAndExpect(string command, string expect, int timeoutMs)
+    {
+        return await SendAndExpect(command, expect, timeoutMs, null);
+    }
+
+    private async Task<string> SendAndExpect(string command, string expect, Action<string>? whenCompleted = null)
+    {
+        return await SendAndExpect(command, expect, 250, whenCompleted);
+    }
+
+
+    private async Task<string> SendAndExpect(string command, string expect, int timeoutMs, Action<string>? whenCompleted)
     {
         _expectPredicate = (r => expect.Equals(r));
         _expectTcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
@@ -129,11 +127,13 @@ public class Engine
 
         try
         {
-            return await _expectTcs.Task.WaitAsync(timeoutCts.Token);
+            string result = await _expectTcs.Task.WaitAsync(timeoutCts.Token);
+            whenCompleted?.Invoke(result);
+            return result;
         }
         catch (OperationCanceledException e)
         {
-            Log($"Timed out waiting for '{expect}'");
+            Log($"{Name} timed out waiting for '{expect}'!");
             return string.Empty;
         }
         finally

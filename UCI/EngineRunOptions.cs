@@ -10,6 +10,9 @@ public class EngineConfig
     [JsonProperty("sync_by_depth")]
     public bool SyncByDepth { get; set; } = new();
 
+    [JsonProperty("print_all_output")]
+    public bool PrintAllOutput { get; set; } = new();
+    
     [JsonProperty("default_opts")]
     public List<string> DefaultOpts { get; set; } = new();
 

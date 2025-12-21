@@ -1,4 +1,5 @@
-﻿using System;
+﻿using Consortium.Misc;
+using System;
 using System.Collections.Generic;
 using System.IO;
 using System.Linq;
@@ -30,11 +31,9 @@ public readonly struct UciOutput
     }
 
     private readonly string Line;
-    public readonly long CreatedAt;
     public UciOutput(string line)
     {
         Line = line;
-        CreatedAt = RightNow;
     }
 
     public bool IsInfo => Line.StartsWith("info ") && !Line.StartsWith("info string");

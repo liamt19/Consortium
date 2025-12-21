@@ -5,10 +5,12 @@ using System.Diagnostics;
 using System.Linq;
 using System.Text.RegularExpressions;
 
-namespace Consortium;
+namespace Consortium.Misc;
 
 public static class Utils
 {
+    public const bool PrintWithTimestamps = false;
+
     private static readonly Regex SetoptionRegex = new(@"^setoption name (.+) value (.+)$", RegexOptions.Compiled);
 
     private static EngineConfig? CachedEngineConfig = null;
@@ -39,15 +41,18 @@ public static class Utils
     public static void Log() => Log("");
     public static void Log(string s)
     {
-        Console.WriteLine(s);
+        if (PrintWithTimestamps)
+            s = $"{RightNow} - {s}";
+
+        BatchedConsoleWriter.WriteLine(s);
         Debug.WriteLine(s);
     }
 
     public static bool EqualsIgnoreCase(this string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
     public static bool StartsWithIgnoreCase(this string a, string b) => a.StartsWith(b, StringComparison.OrdinalIgnoreCase);
 
-    private static readonly long StartTicks = DateTimeOffset.Now.Ticks;
-    public static long RightNow => (DateTimeOffset.Now.Ticks - StartTicks) / TimeSpan.NanosecondsPerTick;
+    private static readonly long ProcStartTime = DateTimeOffset.Now.Ticks;
+    public static long RightNow => (DateTimeOffset.Now.Ticks - ProcStartTime) / (TimeSpan.NanosecondsPerTick);
 
     public static string FormatEngineName(string name)
     {

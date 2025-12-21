@@ -11,6 +11,9 @@ Starts up multiple UCI engines, sends each of them the same commands and aggrega
 * For "go" commands, wait for all engines to reach depth X before printing any output for that depth.
   - If false, print engine outputs as soon as they arrive.
 
+**"print_all_output"**
+* If false, skips printing some extraneous engine outputs, e.g. `option name ...`, `info ... upperbound ...`
+
 **"default_opts"**
 * UCI options to set for all engines unless overridden by engine-specific options
 
