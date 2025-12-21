@@ -17,7 +17,7 @@ public static class Insights
 
     public static bool IsBreakdownCommand(string command)
     {
-        return command.ToLower().StartsWith("breakdown");
+        return command.StartsWithIgnoreCase("breakdown");
     }
 
     public static void BreakdownOf(ConcurrentDictionary<string, List<UciOutput>> dict, string field = FIELD_SCORE)

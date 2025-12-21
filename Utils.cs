@@ -43,6 +43,12 @@ public static class Utils
         Debug.WriteLine(s);
     }
 
+    public static bool EqualsIgnoreCase(this string a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
+    public static bool StartsWithIgnoreCase(this string a, string b) => a.StartsWith(b, StringComparison.OrdinalIgnoreCase);
+
+    private static readonly long StartTicks = DateTimeOffset.Now.Ticks;
+    public static long RightNow => (DateTimeOffset.Now.Ticks - StartTicks) / TimeSpan.NanosecondsPerTick;
+
     public static string FormatEngineName(string name)
     {
         int nChars = EngineRunConfigs.Max(e => e.Name.Length);

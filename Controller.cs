@@ -8,7 +8,7 @@ namespace Consortium;
 
 public class Controller
 {
-    private const bool ALWAYS_PRINT = false;
+    private const bool AlwaysPrint = true;
     private bool SyncByDepth = true;
 
     private List<Engine> Engines = [];
@@ -32,14 +32,13 @@ public class Controller
         LoadEngines();
         ResetOutputData(false);
 
-        foreach (var eng in Engines)
-        {
-            eng.StartProcess();
-        }
-
         StopTasks().Wait();
         StartTasks(true);
+
+        StartAllEngines();
     }
+
+    private void StartAllEngines() => Engines.ForEach(eng => eng.StartProcess());
 
     private void LoadEngines()
     {
@@ -68,10 +67,10 @@ public class Controller
         StopTasks().Wait();
 
         // Only "go" cmds are depth-sync'd, and only if SyncByDepth == true
-        bool immediate = !(command.ToLower().StartsWith("go") && SyncByDepth);
+        bool immediate = !(command.StartsWithIgnoreCase("go") && SyncByDepth);
         StartTasks(immediate);
 
-        bool isStop = command.ToLower().StartsWith("stop");
+        bool isStop = command.StartsWithIgnoreCase("stop");
         ResetOutputData(isStop);
 
         foreach (var eng in Engines)
@@ -160,6 +159,7 @@ public class Controller
                 ReachedDepths[engine] = Math.Max(ReachedDepths[engine], uc.Depth);
 
             DataReadSignal.Release();
+            //Console.WriteLine($"{RightNow} pulsed");
         }
     }
 
@@ -176,7 +176,7 @@ public class Controller
             printedDepth++;
             foreach (var eng in Engines.Select(x => x.Name))
             {
-                if (!InfoOutputData.TryGetValue(eng, out var dataList))
+                if (!InfoOutputData.TryGetValue(eng, out List<UciOutput> dataList))
                     continue;
 
                 var outForDepth = dataList.Last(u => u.Depth == printedDepth);
@@ -201,11 +201,15 @@ public class Controller
                 if (!DataCursors.TryGetValue(eng, out int cursor))
                     continue;
 
-                while (cursor < dataList.Count)
+                //while (cursor < dataList.Count)
+                if (cursor < dataList.Count)
                 {
                     var uc = dataList[cursor];
-                    if ((uc.IsPrintable && uc.ShouldPrint) || ALWAYS_PRINT)
-                        Log($"{FormatEngineName(eng)} >> {uc}");
+                    if ((uc.IsPrintable && uc.ShouldPrint) || AlwaysPrint)
+                    {
+                        //Log($"{FormatEngineName(eng)} >> {uc}");
+                        Log($"{uc.CreatedAt} {FormatEngineName(eng)} >> {uc}");
+                    }
 
                     cursor++;
                 }

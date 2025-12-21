@@ -7,7 +7,7 @@ using System.Text.RegularExpressions;
 
 namespace Consortium.UCI;
 
-public readonly struct UciOutput(string line)
+public readonly struct UciOutput
 {
     private const int NUM_PV_MOVES = 16;
 
@@ -20,25 +20,28 @@ public readonly struct UciOutput(string line)
 
     public static bool IsBlacklisted(string str)
     {
-        str = str.ToLower();
-
-        if (str.StartsWith("option name "))
+        if (str.StartsWithIgnoreCase("option name "))
             return true;
 
-        if (str.StartsWith("id "))
+        if (str.StartsWithIgnoreCase("id "))
             return true;
 
         return false;
     }
 
-    public string Line { get; } = line;
+    private readonly string Line;
+    public readonly long CreatedAt;
+    public UciOutput(string line)
+    {
+        Line = line;
+        CreatedAt = RightNow;
+    }
+
     public bool IsInfo => Line.StartsWith("info ") && !Line.StartsWith("info string");
     public bool IsPrintable => IsInfo || !IsBlacklisted(Line);
     public bool IsBound => Line.Contains("upperbound") || Line.Contains("lowerbound");
     public bool IsCurrMove => Line.Contains("currmove");
-
     public bool HasSelDepth => SelDepth > 0;
-
     public bool ShouldPrint => !IsBound && !IsCurrMove;
     public bool ShouldIncDepth => IsInfo && !IsBound && !IsCurrMove;
 

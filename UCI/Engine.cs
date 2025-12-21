@@ -3,6 +3,7 @@ using System.Collections.Concurrent;
 using System.Collections.Generic;
 using System.Diagnostics;
 using System.Text;
+using System.Text.RegularExpressions;
 using System.Threading.Channels;
 
 namespace Consortium.UCI;
@@ -15,9 +16,9 @@ public class Engine
     public Dictionary<string, string> RemappedCmds { get; private set; }
     public Process Proc { get; private set; }
 
-    private Channel<(string Eng, string Line)> DataChannel;
-
-    private bool UciOK = false;
+    private Channel<(string Eng, string Line)> _dataChannel;
+    private TaskCompletionSource<string>? _expectTcs;
+    private Predicate<string>? _expectPredicate;
 
     public Engine(EngineRunOptions runOpts, Channel<(string Eng, string Line)> dataChannel)
     {
@@ -32,7 +33,7 @@ public class Engine
             this.RemappedCmds.Add(splits[0], splits[1]);
         });
 
-        DataChannel = dataChannel;
+        _dataChannel = dataChannel;
     }
 
     public void StartProcess()
@@ -56,13 +57,14 @@ public class Engine
         Proc.Start();
         Proc.BeginOutputReadLine();
 
-        SendUCIOpts().Wait();
+        SendUCIOpts().GetAwaiter().GetResult();
     }
 
-
+#if NO
     private async Task SendUCIOpts()
     {
         SendCommand("uci");
+        SendAndExpect("uci", s => s == "uciok", 1500);
         await WaitUntil(() => UciOK, 1500);
 
         SendCommand("isready");
@@ -72,15 +74,31 @@ public class Engine
         SendCommand("ucinewgame");
         SendCommand("isready");
     }
+#endif
+
+    private async Task SendUCIOpts()
+    {
+        await SendAndExpect("uci", "uciok");
+        await SendAndExpect("isready", "readyok");
+
+        foreach (var opt in UCIOpts)
+            SendCommand(opt);
+
+        SendCommand("ucinewgame");
+
+        await SendAndExpect("isready", "readyok");
+    }
 
     private void OnTerminated(object? sender, EventArgs e) => Log($"{Name} terminated with code {Proc.ExitCode}");
     private void OnOutputReceived(object sender, DataReceivedEventArgs e)
     {
-        if (e.Data != null)
+        if (e.Data == null) return;
+
+        _dataChannel.Writer.TryWrite((Name, e.Data));
+        if (_expectPredicate?.Invoke(e.Data) == true)
         {
-            DataChannel.Writer.TryWrite((Name, e.Data));
-            if (e.Data.ToLower().StartsWith("uciok"))
-                UciOK = true;
+            if (_expectTcs?.TrySetResult(e.Data) == false)
+                Log("uh oh");
         }
     }
 
@@ -88,16 +106,41 @@ public class Engine
     {
         Debug.Assert(Proc != null && !Proc.HasExited, "what");
 
-        if (RemappedCmds.ContainsKey(command))
-            command = RemappedCmds[command];
+        if (RemappedCmds.TryGetValue(command, out string? remapped))
+            command = remapped;
 
-        Console.WriteLine($"{FormatEngineName(Name)} << {command}");
+        Log($"{RightNow} {FormatEngineName(Name)} << {command}");
 
         try
         {
             Proc.StandardInput.WriteLine(command);
             Proc.StandardInput.Flush();
         } catch { }
+    }
+
+    private async Task<string> SendAndExpect(string command, string expect, int timeoutMs = 250)
+    {
+        _expectPredicate = (r => expect.Equals(r));
+        _expectTcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        SendCommand(command);
+
+        using var timeoutCts = new CancellationTokenSource(timeoutMs);
+
+        try
+        {
+            return await _expectTcs.Task.WaitAsync(timeoutCts.Token);
+        }
+        catch (OperationCanceledException e)
+        {
+            Log($"Timed out waiting for '{expect}'");
+            return string.Empty;
+        }
+        finally
+        {
+            _expectPredicate = null;
+            _expectTcs = null;
+        }
     }
 
     public override string ToString() => Name;
