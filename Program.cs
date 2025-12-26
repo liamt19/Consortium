@@ -21,7 +21,8 @@ internal class Program
             shutdownToken.Cancel();
         };
 
-        controller = new();
+        //controller = new GeneralController();
+        controller = new DemocracyController();
         while (!shutdownToken.IsCancellationRequested)
         {
             string input = ReadConsoleLine();

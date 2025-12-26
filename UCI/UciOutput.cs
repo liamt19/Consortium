@@ -13,6 +13,7 @@ public readonly struct UciOutput
     private static readonly Regex NodesRegex = new(@" nodes (\d+)", RegexOptions.Compiled);
     private static readonly Regex TimeRegex = new(@" time (\d+)", RegexOptions.Compiled);
     private static readonly Regex PVRegex = new(@" pv (.+)", RegexOptions.Compiled);
+    private static readonly Regex BestmoveRegex = new(@"bestmove (\S+)", RegexOptions.Compiled);
 
     public static bool IsBlacklisted(string str)
     {
@@ -25,16 +26,17 @@ public readonly struct UciOutput
         return false;
     }
 
-    private readonly string _line;
+    public readonly string Line { get; }
     public UciOutput(string line)
     {
-        _line = line;
+        Line = line;
     }
 
-    public bool IsInfo => _line.StartsWith("info ") && !_line.StartsWith("info string");
-    public bool IsPrintable => IsInfo || !IsBlacklisted(_line);
-    public bool IsBound => _line.Contains("upperbound") || _line.Contains("lowerbound");
-    public bool IsCurrMove => _line.Contains("currmove");
+    public bool IsInfo => Line.StartsWith("info ") && !Line.StartsWith("info string");
+    public bool IsPrintable => IsInfo || !IsBlacklisted(Line);
+    public bool IsBound => Line.Contains("upperbound") || Line.Contains("lowerbound");
+    public bool IsCurrMove => Line.Contains("currmove");
+    public bool IsBestmove => Line.Contains("bestmove");
     public bool HasSelDepth => SelDepth > 0;
     public bool ShouldPrint => !IsBound && !IsCurrMove;
     public bool ShouldIncDepth => IsInfo && !IsBound && !IsCurrMove;
@@ -43,7 +45,7 @@ public readonly struct UciOutput
     {
         get
         {
-            Match match = ScoreRegex.Match(_line);
+            Match match = ScoreRegex.Match(Line);
             if (match.Success)
             {
                 var units = match.Groups[1].Value.Contains("mate") ? "#" : "cp ";
@@ -55,11 +57,12 @@ public readonly struct UciOutput
         }
     }
 
-    public int Depth => _line != null && DepthRegex.Match(_line) is { Success: true } m ? int.Parse(m.Groups[1].Value) : 0;
-    public int SelDepth => _line != null && SelDepthRegex.Match(_line) is { Success: true } m ? int.Parse(m.Groups[1].Value) : 0;
-    public ulong Nodes => _line != null && NodesRegex.Match(_line) is { Success: true } m ? ulong.Parse(m.Groups[1].Value) : 0;
-    public ulong Time => _line != null && TimeRegex.Match(_line) is { Success: true } m ? ulong.Parse(m.Groups[1].Value) : 0;
-    public string PV => _line != null && PVRegex.Match(_line) is { Success: true } m ? m.Groups[1].Value : "";
+    public int Depth => Line != null && DepthRegex.Match(Line) is { Success: true } m ? int.Parse(m.Groups[1].Value) : 0;
+    public int SelDepth => Line != null && SelDepthRegex.Match(Line) is { Success: true } m ? int.Parse(m.Groups[1].Value) : 0;
+    public ulong Nodes => Line != null && NodesRegex.Match(Line) is { Success: true } m ? ulong.Parse(m.Groups[1].Value) : 0;
+    public ulong Time => Line != null && TimeRegex.Match(Line) is { Success: true } m ? ulong.Parse(m.Groups[1].Value) : 0;
+    public string PV => Line != null && PVRegex.Match(Line) is { Success: true } m ? m.Groups[1].Value : "";
+    public string Bestmove => Line != null && BestmoveRegex.Match(Line) is { Success: true } m ? m.Groups[1].Value : Line;
 
     private string GetMoves(int n, int skip = 0)
     {
@@ -82,7 +85,7 @@ public readonly struct UciOutput
     public string ToString(bool rawUCI)
     {
         if (!IsInfo || rawUCI)
-            return _line;
+            return Line;
 
         List<string> strs =
         [
@@ -102,7 +105,7 @@ public readonly struct UciOutput
             return ToString(rawUCI);
 
         if (!IsInfo || rawUCI)
-            return _line;
+            return Line;
 
         var ansiMoves = Math.Min(NUM_PV_MOVES, ansiLen);
         var pvGrp = $"M: {AnsiFormatForGroup(GetMoves(ansiMoves), group)}";

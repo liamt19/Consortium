@@ -91,14 +91,15 @@ public class Engine
         }
     }
 
-    public void SendCommand(string command)
+    public void SendCommand(string command, bool printSend = true)
     {
         Debug.Assert(Proc != null, "what");
 
         if (RemappedCmds.TryGetValue(command, out string? remapped))
             command = remapped;
 
-        Log($"{FormatEngineName(Name)} << {command}");
+        if (printSend)
+            Log($"{FormatEngineName(Name)} << {command}");
 
         try
         {

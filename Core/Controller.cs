@@ -7,50 +7,42 @@ using System.Threading.Channels;
 
 namespace Consortium.Core;
 
-public class Controller
+public abstract class Controller
 {
-    private bool SyncByDepth = true;
-    private bool PrintAllOutput = false;
-    private bool PrintRawUCI = false;
+    protected readonly List<Engine> _engines;
+    protected readonly Channel<(string Eng, UciOutput Line)> _dataChannel;
 
-    private readonly List<Engine> _engines = [];
-    private readonly ConcurrentDictionary<string, List<UciOutput>> _infoOutputData = [];
-    private readonly ConcurrentDictionary<string, int> _reachedDepths = [];
-    private readonly List<string> _rootPVGroups = [];
+    protected Task? _ioHandlerTask;
+    protected CancellationTokenSource _ioHandlerTokenSource;
 
-    private readonly Channel<(string Eng, UciOutput Line)> _dataChannel;
-
-    private Task? _ioHandlerTask;
-    private CancellationTokenSource _ioHandlerTokenSource = new();
-    private OutputMode _outputMode;
-
-    public Controller()
+    protected Controller()
     {
-        //AllowSynchronousContinuations perhaps?
-        _dataChannel = Channel.CreateUnbounded<(string, UciOutput)>(new() { SingleReader = true });
+        _engines = [];
+        _dataChannel = Channel.CreateUnbounded<(string, UciOutput)>(new() { SingleReader = true }); //AllowSynchronousContinuations?
+        _ioHandlerTokenSource = new();
 
         LoadEngines();
-        ResetOutputData(false);
+        ResetOutputData();
 
         StopTasks().Wait();
-        StartTasks(true);
+        StartTasks();
 
         StartAllEngines();
     }
 
-    private void StartAllEngines()
+    private void RemoveKilledProcesses() => _engines.RemoveAll(eng => eng.Proc is null || eng.Proc.HasExited);
+
+    protected void StartAllEngines()
     {
         Parallel.ForEach(_engines, eng =>
         {
             eng.StartProcess();
         });
 
-        // separate these for formatting's sake
-        Parallel.ForEach(_engines, eng =>
-        {
-            eng.SendUCIOpts();
-        });
+        AfterEnginesStarted();
     }
+
+    protected virtual void AfterEnginesStarted() { }
 
     private void LoadEngines()
     {
@@ -59,10 +51,6 @@ public class Controller
         {
             _engines.Add(new Engine(opt, _dataChannel));
         });
-
-        SyncByDepth = cfg.SyncByDepth;
-        PrintAllOutput = cfg.PrintAllOutput;
-        PrintRawUCI = cfg.PrintRawUCI;
     }
 
     public void TerminateProcesses()
@@ -81,10 +69,9 @@ public class Controller
             BatchedConsoleWriter.Complete();
         }
         catch (Exception) { }
-
     }
 
-    public void ProcessInput(string command)
+    public virtual void ProcessInput(string command)
     {
         if (string.IsNullOrEmpty(command))
         {
@@ -92,67 +79,30 @@ public class Controller
             return;
         }
 
-        if (Insights.IsBreakdownCommand(command))
-        {
-            Insights.BreakdownOf(_infoOutputData, command);
-        }
-        else
-        {
-            SendToAll(command);
-        }
+        SendToAll(command);
     }
 
-    private void SendToAll(string command)
+    protected void SendToAll(string command, bool printSend = true)
     {
         StopTasks().Wait();
-
-        // Only "go" cmds are depth-sync'd, and only if SyncByDepth == true
-        bool immediate = !(command.StartsWithIgnoreCase("go") && SyncByDepth);
-        StartTasks(immediate);
-
-        bool isStop = command.StartsWithIgnoreCase("stop");
-        ResetOutputData(isStop);
+        StartTasks(command);
+        ResetOutputData(command);
 
         RemoveKilledProcesses();
-        Parallel.ForEach(_engines, eng => eng.SendCommand(command));
+        DoSendCommand(command, printSend);
+    }
+
+    protected virtual void DoSendCommand(string command, bool printSend = true)
+    {
+        Parallel.ForEach(_engines, eng => eng.SendCommand(command, printSend));
         Log();
     }
 
-    private void RemoveKilledProcesses()
-    {
-        _engines.RemoveAll(eng => eng.Proc is null || eng.Proc.HasExited);
-    }
 
-    private void ResetOutputData(bool isStop)
-    {
-        if (isStop)
-            return;
+    protected abstract void ResetOutputData(string? command = null);
+    protected abstract void StartTasks(string? command = null);
 
-        _infoOutputData.Clear();
-        _reachedDepths.Clear();
-        _rootPVGroups.Clear();
-
-        foreach (var eng in _engines.Select(x => x.Name))
-        {
-            if (!_infoOutputData.TryAdd(eng, []))
-                _infoOutputData[eng].Clear();
-
-            if (!_reachedDepths.TryAdd(eng, 0))
-                _reachedDepths[eng] = 0;
-        }
-    }
-
-    private void StartTasks(bool immediateWrite)
-    {
-        _outputMode = immediateWrite ? OutputMode.Immediate : OutputMode.DepthSynchronized;
-
-        _ioHandlerTokenSource.Dispose();
-        _ioHandlerTokenSource = new();
-
-        _ioHandlerTask = Task.Run(() => IOHandlerTaskProc(_ioHandlerTokenSource.Token));
-    }
-
-    private async Task StopTasks()
+    protected async Task StopTasks()
     {
         if (_ioHandlerTask?.IsCompleted == false)
         {
@@ -165,51 +115,6 @@ public class Controller
         }
 
         _ioHandlerTask = null;
-    }
-
-    private async Task IOHandlerTaskProc(CancellationToken token)
-    {
-        int printedDepth = 0;
-        var engineNames = _engines.Select(e => e.Name).ToList();
-        var channelStream = _dataChannel.Reader.ReadAllAsync(token);
-        await foreach (var (engine, uc) in channelStream)
-        {
-            // Immediate output
-            if (_outputMode == OutputMode.Immediate)
-            {
-                if (PrintAllOutput || (uc.IsPrintable && uc.ShouldPrint))
-                {
-                    Log($"{FormatEngineName(engine)} >> {uc.ToString(PrintRawUCI)}");
-                }
-
-                continue;
-            }
-
-            // Depth-sync'd
-            if (uc.IsInfo)
-            {
-                _infoOutputData[engine].Add(uc);
-
-                if (uc.ShouldIncDepth)
-                    _reachedDepths[engine] = Math.Max(_reachedDepths[engine], uc.Depth);
-
-                if (engineNames.All(eng => _reachedDepths[eng] > printedDepth))
-                {
-                    printedDepth++;
-
-                    var lastInfos = _infoOutputData.Select(x => (x.Key, x.Value.Last(u => u.Depth == printedDepth))).ToList();
-                    var pvToGroup = GroupPVs(_rootPVGroups, lastInfos);
-
-                    foreach (var eng in engineNames)
-                    {
-                        (int thisGroup, int ansiLen) = pvToGroup[eng];
-                        var outForDepth = _infoOutputData[eng].Last(u => u.Depth == printedDepth);
-                        Log($"{FormatEngineName(eng)} >> {outForDepth.FormatAnsi(thisGroup, ansiLen, PrintRawUCI)}");
-                    }
-                    Log();
-                }
-            }
-        }
     }
 
 }
