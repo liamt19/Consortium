@@ -1,8 +1,4 @@
-﻿using System;
-using System.Collections.Concurrent;
-using System.Collections.Generic;
-using System.Diagnostics;
-using System.Text;
+﻿using System.Diagnostics;
 using System.Threading.Channels;
 
 namespace Consortium.UCI;
@@ -15,11 +11,11 @@ public class Engine
     public Dictionary<string, string> RemappedCmds { get; private set; }
     public Process Proc { get; private set; }
 
-    private Channel<(string Eng, string Line)> DataChannel;
+    private readonly Channel<(string Eng, UciOutput Line)> _dataChannel;
+    private TaskCompletionSource<string>? _expectTcs;
+    private Predicate<string>? _expectPredicate;
 
-    private bool UciOK = false;
-
-    public Engine(EngineRunOptions runOpts, Channel<(string Eng, string Line)> dataChannel)
+    public Engine(EngineRunOptions runOpts, Channel<(string Eng, UciOutput Line)> dataChannel)
     {
         Name = runOpts.Name;
         FilePath = runOpts.Path;
@@ -32,7 +28,7 @@ public class Engine
             this.RemappedCmds.Add(splits[0], splits[1]);
         });
 
-        DataChannel = dataChannel;
+        _dataChannel = dataChannel;
     }
 
     public void StartProcess()
@@ -55,49 +51,97 @@ public class Engine
         Proc.Exited += OnTerminated;
         Proc.Start();
         Proc.BeginOutputReadLine();
-
-        SendUCIOpts().Wait();
+        Log($"{FormatEngineName(Name)} pid {Proc.Id}");
     }
 
-
-    private async Task SendUCIOpts()
+    public void Terminate()
     {
-        SendCommand("uci");
-        await WaitUntil(() => UciOK, 1500);
+        try
+        {
+            Proc.StandardInput.Close();
+            Proc.Kill();
+        }
+        catch { }
+    }
 
-        SendCommand("isready");
+    public async Task SendUCIOpts()
+    {
+        await SendAndExpect("uci", "uciok", 1000);
+        await SendAndExpect("isready", "readyok");
+
         foreach (var opt in UCIOpts)
             SendCommand(opt);
 
         SendCommand("ucinewgame");
-        SendCommand("isready");
+
+        await SendAndExpect("isready", "readyok");
     }
 
     private void OnTerminated(object? sender, EventArgs e) => Log($"{Name} terminated with code {Proc.ExitCode}");
     private void OnOutputReceived(object sender, DataReceivedEventArgs e)
     {
-        if (e.Data != null)
+        if (e.Data == null) return;
+
+        var uc = new UciOutput(e.Data);
+        _dataChannel.Writer.TryWrite((Name, uc));
+        if (_expectPredicate?.Invoke(e.Data) == true)
         {
-            DataChannel.Writer.TryWrite((Name, e.Data));
-            if (e.Data.ToLower().StartsWith("uciok"))
-                UciOK = true;
+            if (_expectTcs?.TrySetResult(e.Data) == false)
+                throw new Exception($"_expectTcs.TrySetResult({e.Data}) failed??");
         }
     }
 
     public void SendCommand(string command)
     {
-        Debug.Assert(Proc != null && !Proc.HasExited, "what");
+        Debug.Assert(Proc != null, "what");
 
-        if (RemappedCmds.ContainsKey(command))
-            command = RemappedCmds[command];
+        if (RemappedCmds.TryGetValue(command, out string? remapped))
+            command = remapped;
 
-        Console.WriteLine($"{FormatEngineName(Name)} << {command}");
+        Log($"{FormatEngineName(Name)} << {command}");
 
         try
         {
             Proc.StandardInput.WriteLine(command);
             Proc.StandardInput.Flush();
         } catch { }
+    }
+
+    public async Task<string> SendAndWait(string command, int timeoutMs = 250)
+    {
+        return await SendAndExpect(command, (_ => true), timeoutMs, null);
+    }
+
+    private async Task<string> SendAndExpect(string command, string expect, int timeoutMs = 250, Action<string>? whenCompleted = null)
+    {
+        return await SendAndExpect(command, (r => expect.Equals(r)), timeoutMs, whenCompleted);
+    }
+
+    private async Task<string> SendAndExpect(string command, Predicate<string>? expect, int timeoutMs = 250, Action<string>? whenCompleted = null)
+    {
+        _expectPredicate = expect;
+        _expectTcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
+
+        SendCommand(command);
+
+        using var timeoutCts = new CancellationTokenSource(timeoutMs);
+
+        try
+        {
+            string result = await _expectTcs.Task.WaitAsync(timeoutCts.Token);
+            whenCompleted?.Invoke(result);
+            return result;
+        }
+        catch (OperationCanceledException)
+        {
+            Debug.WriteLine($"{Name} timed out waiting for '{expect}'!");
+            return string.Empty;
+        }
+        finally
+        {
+            _expectPredicate = null;
+            _expectTcs = null;
+        }
     }
 
     public override string ToString() => Name;

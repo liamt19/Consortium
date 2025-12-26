@@ -1,5 +1,7 @@
 {
 	"sync_by_depth": true,
+	"print_all_output": true,
+	"print_raw_uci": false,
 	"default_opts": [
 		"setoption name Hash value 128",
 		"setoption name Threads value 1"
@@ -7,7 +9,7 @@
 	"engines": [
 		{
 			"name": "horsie",
-			"path": "C:/Programming/Consortium/horsie-1.1.6-native.exe",
+			"path": "D:/engines/horsie-1.1.6-native.exe",
 			"opts": [
 
 			],
@@ -17,7 +19,7 @@
 		},
 		{
 			"name": "viri18",
-			"path": "C:/Programming/Consortium/viridithas-18.0.0-win-x86-64-v4.exe",
+			"path": "D:/engines/viridithas-18.0.0-win-x86-64-v4.exe",
 			"opts": [
 
 			],
@@ -27,7 +29,7 @@
 		},
 		{
 			"name": "sp7040",
-			"path": "C:/Programming/Consortium/stormphrax-7.0.40-native.exe",
+			"path": "D:/engines/stormphrax-7.0.40-native.exe",
 			"opts": [
 
 			],
@@ -37,12 +39,52 @@
 		},
 		{
 			"name": "pnco181",
-			"path": "C:/Programming/Consortium/pawnocchio-1.8.1-windows-x86_64_znver4.exe",
+			"path": "D:/engines/pawnocchio-1.8.1-windows-x86_64_znver4.exe",
 			"opts": [
 
 			],
 			"remapped_cmds": [
 				"eval;nneval"
+			]
+		},
+		{
+			"name": "caissa124",
+			"path": "D:/engines/caissa-1.24-x64-avx512.exe",
+			"opts": [
+
+			],
+			"remapped_cmds": [
+
+			]
+		},
+		{
+			"name": "clockwork",
+			"path": "D:/engines/clockwork-1fad8b8-zen4.exe",
+			"opts": [
+
+			],
+			"remapped_cmds": [
+
+			]
+		},
+		{
+			"name": "sirius",
+			"path": "D:/engines/sirius-fcb974c-native.exe",
+			"opts": [
+
+			],
+			"remapped_cmds": [
+
+			]
+		},
+		{
+			"name": "heimdall",
+			"path": "D:/engines/heimdall-2c24d7a-native.exe",
+			"opts": [
+
+			],
+			"remapped_cmds": [
+
 			]
 		}
 	]
