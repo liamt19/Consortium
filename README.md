@@ -14,6 +14,9 @@ Starts up multiple UCI engines, sends each of them the same commands and aggrega
 **"print_all_output"**
 * If false, skips printing some extraneous engine outputs, e.g. `option name ...`, `info ... upperbound ...`
 
+**"print_raw_uci"**
+* If false, formats "info ..." outputs nicely and with colorized PVs (see example below) instead of in UCI format
+
 **"default_opts"**
 * UCI options to set for all engines unless overridden by engine-specific options
 

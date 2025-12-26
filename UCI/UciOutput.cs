@@ -25,16 +25,16 @@ public readonly struct UciOutput
         return false;
     }
 
-    private readonly string Line;
+    private readonly string _line;
     public UciOutput(string line)
     {
-        Line = line;
+        _line = line;
     }
 
-    public bool IsInfo => Line.StartsWith("info ") && !Line.StartsWith("info string");
-    public bool IsPrintable => IsInfo || !IsBlacklisted(Line);
-    public bool IsBound => Line.Contains("upperbound") || Line.Contains("lowerbound");
-    public bool IsCurrMove => Line.Contains("currmove");
+    public bool IsInfo => _line.StartsWith("info ") && !_line.StartsWith("info string");
+    public bool IsPrintable => IsInfo || !IsBlacklisted(_line);
+    public bool IsBound => _line.Contains("upperbound") || _line.Contains("lowerbound");
+    public bool IsCurrMove => _line.Contains("currmove");
     public bool HasSelDepth => SelDepth > 0;
     public bool ShouldPrint => !IsBound && !IsCurrMove;
     public bool ShouldIncDepth => IsInfo && !IsBound && !IsCurrMove;
@@ -43,7 +43,7 @@ public readonly struct UciOutput
     {
         get
         {
-            Match match = ScoreRegex.Match(Line);
+            Match match = ScoreRegex.Match(_line);
             if (match.Success)
             {
                 var units = match.Groups[1].Value.Contains("mate") ? "#" : "cp ";
@@ -55,16 +55,20 @@ public readonly struct UciOutput
         }
     }
 
-    public int Depth => Line != null && DepthRegex.Match(Line) is { Success: true } m ? int.Parse(m.Groups[1].Value) : 0;
-    public int SelDepth => Line != null && SelDepthRegex.Match(Line) is { Success: true } m ? int.Parse(m.Groups[1].Value) : 0;
-    public ulong Nodes => Line != null && NodesRegex.Match(Line) is { Success: true } m ? ulong.Parse(m.Groups[1].Value) : 0;
-    public ulong Time => Line != null && TimeRegex.Match(Line) is { Success: true } m ? ulong.Parse(m.Groups[1].Value) : 0;
-    public string PV => Line != null && PVRegex.Match(Line) is { Success: true } m ? m.Groups[1].Value : "";
+    public int Depth => _line != null && DepthRegex.Match(_line) is { Success: true } m ? int.Parse(m.Groups[1].Value) : 0;
+    public int SelDepth => _line != null && SelDepthRegex.Match(_line) is { Success: true } m ? int.Parse(m.Groups[1].Value) : 0;
+    public ulong Nodes => _line != null && NodesRegex.Match(_line) is { Success: true } m ? ulong.Parse(m.Groups[1].Value) : 0;
+    public ulong Time => _line != null && TimeRegex.Match(_line) is { Success: true } m ? ulong.Parse(m.Groups[1].Value) : 0;
+    public string PV => _line != null && PVRegex.Match(_line) is { Success: true } m ? m.Groups[1].Value : "";
 
-    private string GetMoves(int n)
+    private string GetMoves(int n, int skip = 0)
     {
-        var moves = PV.Split(' ');
-        return string.Join(' ', moves, 0, Math.Min(n, moves.Length));
+        var moves = PV.Split(' ', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        if (skip >= moves.Length || n <= 0)
+            return string.Empty;
+
+        var slice = moves.Skip(skip).Take(n - skip);
+        return string.Join(' ', slice);
     }
 
     private string DepthStr => $"D: {Depth,3}";
@@ -74,10 +78,11 @@ public readonly struct UciOutput
     private string TimeStr => $"T: {Time,8}";
     private string PVStr => $"M: {GetMoves(NUM_PV_MOVES)}";
 
-    public override string ToString()
+    public override string ToString() => ToString(false);
+    public string ToString(bool rawUCI)
     {
-        if (!IsInfo)
-            return Line;
+        if (!IsInfo || rawUCI)
+            return _line;
 
         List<string> strs =
         [
@@ -89,5 +94,30 @@ public readonly struct UciOutput
         ];
 
         return string.Join("  ", strs);
+    }
+
+    public string FormatAnsi(int group, int ansiLen, bool rawUCI = false)
+    {
+        if (!HasAnsi)
+            return ToString(rawUCI);
+
+        if (!IsInfo || rawUCI)
+            return _line;
+
+        var ansiMoves = Math.Min(NUM_PV_MOVES, ansiLen);
+        var pvGrp = $"M: {AnsiFormatForGroup(GetMoves(ansiMoves), group)}";
+        var pvRest = GetMoves(NUM_PV_MOVES, ansiMoves);
+
+        List<string> strs =
+        [
+            DepthStr + SelDepthStr,
+            ScoreStr,
+            NodeStr,
+            TimeStr,
+            pvGrp,
+            pvRest
+        ];
+
+        return string.Join(" ", strs);
     }
 }

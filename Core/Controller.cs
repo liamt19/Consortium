@@ -1,18 +1,22 @@
 ﻿using Consortium.Misc;
 using Consortium.UCI;
 using System.Collections.Concurrent;
+using System.Diagnostics;
+using System.Threading;
 using System.Threading.Channels;
 
 namespace Consortium.Core;
 
 public class Controller
 {
-    private bool PrintAllOutput = false;
     private bool SyncByDepth = true;
+    private bool PrintAllOutput = false;
+    private bool PrintRawUCI = false;
 
     private readonly List<Engine> _engines = [];
     private readonly ConcurrentDictionary<string, List<UciOutput>> _infoOutputData = [];
     private readonly ConcurrentDictionary<string, int> _reachedDepths = [];
+    private readonly List<string> _rootPVGroups = [];
 
     private readonly Channel<(string Eng, UciOutput Line)> _dataChannel;
 
@@ -58,10 +62,36 @@ public class Controller
 
         SyncByDepth = cfg.SyncByDepth;
         PrintAllOutput = cfg.PrintAllOutput;
+        PrintRawUCI = cfg.PrintRawUCI;
+    }
+
+    public void TerminateProcesses()
+    {
+        RemoveKilledProcesses();
+
+        SendToAll("stop");
+        Task.WhenAll(_engines.Select(e => e.SendAndWait("quit", 250))).GetAwaiter().GetResult();
+        Parallel.ForEach(_engines, eng => eng.Terminate());
+
+        Thread.Sleep(100);
+        StopTasks().Wait();
+        try
+        {
+            _dataChannel.Writer.Complete();
+            BatchedConsoleWriter.Complete();
+        }
+        catch (Exception) { }
+
     }
 
     public void ProcessInput(string command)
     {
+        if (string.IsNullOrEmpty(command))
+        {
+            Log();
+            return;
+        }
+
         if (Insights.IsBreakdownCommand(command))
         {
             Insights.BreakdownOf(_infoOutputData, command);
@@ -83,8 +113,14 @@ public class Controller
         bool isStop = command.StartsWithIgnoreCase("stop");
         ResetOutputData(isStop);
 
+        RemoveKilledProcesses();
         Parallel.ForEach(_engines, eng => eng.SendCommand(command));
         Log();
+    }
+
+    private void RemoveKilledProcesses()
+    {
+        _engines.RemoveAll(eng => eng.Proc is null || eng.Proc.HasExited);
     }
 
     private void ResetOutputData(bool isStop)
@@ -94,6 +130,7 @@ public class Controller
 
         _infoOutputData.Clear();
         _reachedDepths.Clear();
+        _rootPVGroups.Clear();
 
         foreach (var eng in _engines.Select(x => x.Name))
         {
@@ -142,7 +179,7 @@ public class Controller
             {
                 if (PrintAllOutput || (uc.IsPrintable && uc.ShouldPrint))
                 {
-                    Log($"{FormatEngineName(engine)} >> {uc}");
+                    Log($"{FormatEngineName(engine)} >> {uc.ToString(PrintRawUCI)}");
                 }
 
                 continue;
@@ -160,12 +197,15 @@ public class Controller
                 {
                     printedDepth++;
 
+                    var lastInfos = _infoOutputData.Select(x => (x.Key, x.Value.Last(u => u.Depth == printedDepth))).ToList();
+                    var pvToGroup = GroupPVs(_rootPVGroups, lastInfos);
+
                     foreach (var eng in engineNames)
                     {
+                        (int thisGroup, int ansiLen) = pvToGroup[eng];
                         var outForDepth = _infoOutputData[eng].Last(u => u.Depth == printedDepth);
-                        Log($"{FormatEngineName(eng)} >> {outForDepth}");
+                        Log($"{FormatEngineName(eng)} >> {outForDepth.FormatAnsi(thisGroup, ansiLen, PrintRawUCI)}");
                     }
-
                     Log();
                 }
             }

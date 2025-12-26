@@ -1,21 +1,17 @@
-﻿using Consortium.UCI;
-using System;
-using System.Collections.Generic;
-using System.Linq;
-using System.Text;
+﻿using System.Text;
 using System.Threading.Channels;
-using System.Threading.Tasks;
 
 namespace Consortium.Misc;
 
 public static class BatchedConsoleWriter
 {
     private const int BatchSize = 64;
-    private const int BatchDelayMs = 1;
+    private const int BatchDelayMs = 3;
 
     private static readonly Channel<string> _writeChannel = Channel.CreateUnbounded<string>(new() { SingleReader = true });
     private static readonly Task? _batchTask = Task.Run(BatchedOutputTaskProc);
 
+    public static void Complete() => _writeChannel.Writer.Complete();
     public static void Write(string line) => _writeChannel.Writer.TryWrite(line);
     public static void WriteLine(string line) => _writeChannel.Writer.TryWrite(line + Environment.NewLine);
 
@@ -65,10 +61,9 @@ public static class BatchedConsoleWriter
     private static async Task AsyncOutputTaskProc()
     {
         await foreach (var line in _writeChannel.Reader.ReadAllAsync())
-            Console.WriteLine(line);
+            Console.Write(line);
     }
 #endif
-
 #if ALSO_NO
     private static async Task BatchedOutputTaskProc()
     {

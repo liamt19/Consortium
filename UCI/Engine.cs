@@ -54,6 +54,16 @@ public class Engine
         Log($"{FormatEngineName(Name)} pid {Proc.Id}");
     }
 
+    public void Terminate()
+    {
+        try
+        {
+            Proc.StandardInput.Close();
+            Proc.Kill();
+        }
+        catch { }
+    }
+
     public async Task SendUCIOpts()
     {
         await SendAndExpect("uci", "uciok", 1000);
@@ -83,7 +93,7 @@ public class Engine
 
     public void SendCommand(string command)
     {
-        Debug.Assert(Proc != null && !Proc.HasExited, "what");
+        Debug.Assert(Proc != null, "what");
 
         if (RemappedCmds.TryGetValue(command, out string? remapped))
             command = remapped;
@@ -97,20 +107,19 @@ public class Engine
         } catch { }
     }
 
-    private async Task<string> SendAndExpect(string command, string expect, int timeoutMs)
+    public async Task<string> SendAndWait(string command, int timeoutMs = 250)
     {
-        return await SendAndExpect(command, expect, timeoutMs, null);
+        return await SendAndExpect(command, (_ => true), timeoutMs, null);
     }
 
-    private async Task<string> SendAndExpect(string command, string expect, Action<string>? whenCompleted = null)
+    private async Task<string> SendAndExpect(string command, string expect, int timeoutMs = 250, Action<string>? whenCompleted = null)
     {
-        return await SendAndExpect(command, expect, 250, whenCompleted);
+        return await SendAndExpect(command, (r => expect.Equals(r)), timeoutMs, whenCompleted);
     }
 
-
-    private async Task<string> SendAndExpect(string command, string expect, int timeoutMs, Action<string>? whenCompleted)
+    private async Task<string> SendAndExpect(string command, Predicate<string>? expect, int timeoutMs = 250, Action<string>? whenCompleted = null)
     {
-        _expectPredicate = (r => expect.Equals(r));
+        _expectPredicate = expect;
         _expectTcs = new TaskCompletionSource<string>(TaskCreationOptions.RunContinuationsAsynchronously);
 
         SendCommand(command);
@@ -123,9 +132,9 @@ public class Engine
             whenCompleted?.Invoke(result);
             return result;
         }
-        catch (OperationCanceledException e)
+        catch (OperationCanceledException)
         {
-            Log($"{Name} timed out waiting for '{expect}'!");
+            Debug.WriteLine($"{Name} timed out waiting for '{expect}'!");
             return string.Empty;
         }
         finally

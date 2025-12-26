@@ -12,7 +12,10 @@ public class EngineConfig
 
     [JsonProperty("print_all_output")]
     public bool PrintAllOutput { get; set; } = new();
-    
+
+    [JsonProperty("print_raw_uci")]
+    public bool PrintRawUCI { get; set; } = new();
+
     [JsonProperty("default_opts")]
     public List<string> DefaultOpts { get; set; } = new();
 

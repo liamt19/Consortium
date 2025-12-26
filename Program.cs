@@ -6,22 +6,33 @@ namespace Consortium;
 
 internal class Program
 {
+    private static Controller controller;
+
     static void Main(string[] args)
     {
-        Console.OutputEncoding = Encoding.UTF8;
+        CancellationTokenSource shutdownToken = new();
+        AppDomain.CurrentDomain.ProcessExit += (s, e) => Terminate();
 
-        InputLoop();
+        Console.SetIn(new StreamReader(Console.OpenStandardInput(), Encoding.UTF8, false, 2048 * 4));
+        Console.OutputEncoding = Encoding.UTF8;
+        Console.CancelKeyPress += (s, e) =>
+        {
+            e.Cancel = true;
+            shutdownToken.Cancel();
+        };
+
+        controller = new();
+        while (!shutdownToken.IsCancellationRequested)
+        {
+            string input = ReadConsoleLine();
+            controller.ProcessInput(input);
+        }
+
+        Terminate();
     }
 
-    static void InputLoop()
+    private static void Terminate()
     {
-        Controller controller = new Controller();
-
-        string input;
-        do
-        {
-            input = ReadConsoleLine();
-            controller.ProcessInput(input);
-        } while (input?.ToLower() != "exit");
+        controller.TerminateProcesses();
     }
 }

@@ -9,6 +9,8 @@ namespace Consortium.Core;
 
 public static class Insights
 {
+    private const char SEPARATOR = ';';
+
     public const string FIELD_NODES = "Nodes";
     public const string FIELD_SCORE = "Score";
     public const string FIELD_SELDEPTH = "SelDepth";
@@ -43,7 +45,7 @@ public static class Insights
     {
         var keys = dict.Keys.ToList();
         keys.Insert(0, "depth");
-        Console.Write(string.Join(" ", keys));
+        Console.Write(string.Join(SEPARATOR, keys));
         Console.WriteLine();
 
         var outpList = dict.Values.Select(x => x.Where(y => !y.IsBound && !y.IsCurrMove).ToList()).ToList();
@@ -56,7 +58,7 @@ public static class Insights
 
         for (int depth = 1; depth <= maxDepth; depth++)
         {
-            Console.Write($"{depth} ");
+            Console.Write($"{depth}{SEPARATOR}");
             for (int eng = 0; eng < outpList.Count; eng++)
             {
                 var thisOutp = outpList[eng];
@@ -65,7 +67,7 @@ public static class Insights
                 //  No output at this depth for this eng
                 if (!thisOutp.Any(x => (x.IsInfo && x.Depth == depth)))
                 {
-                    outStr = "0";
+                    outStr = "";
                     goto Skip;
                 }
 
@@ -103,32 +105,12 @@ public static class Insights
                 Skip:
                 Console.Write(outStr);
                 if (eng != outpList.Count - 1)
-                    Console.Write(" ");
+                    Console.Write(SEPARATOR);
             }
 
             Console.WriteLine();
         }
 
         Console.WriteLine();
-    }
-
-    public static void PrintBreakdown(List<UciOutput> outputs, string field = FIELD_SCORE)
-    {
-        Console.WriteLine($"depth {field}");
-        int maxDepth = outputs.Max(x => x.Depth);
-        for (int i = 0; i <= maxDepth; i++)
-        {
-            var outp = outputs[i];
-
-            Console.Write($"{i} ");
-            var outpField = field switch
-            {
-                FIELD_NODES => outp.Nodes.ToString(),
-                FIELD_SCORE => outp.Score,
-                FIELD_SELDEPTH => outp.SelDepth.ToString(),
-                _ => FIELD_SCORE
-            };
-            Console.WriteLine(outpField);
-        }
     }
 }
