@@ -9,8 +9,13 @@ namespace Consortium.Core;
 
 public abstract class Controller
 {
+    private const bool SynContinuations = false;
+
     protected readonly List<Engine> _engines;
     protected readonly Channel<(string Eng, UciOutput Line)> _dataChannel;
+
+    protected readonly ConcurrentDictionary<string, List<UciOutput>> _infoOutputData = [];
+    protected readonly ConcurrentDictionary<string, int> _reachedDepths = [];
 
     protected Task? _ioHandlerTask;
     protected CancellationTokenSource _ioHandlerTokenSource;
@@ -18,7 +23,7 @@ public abstract class Controller
     protected Controller()
     {
         _engines = [];
-        _dataChannel = Channel.CreateUnbounded<(string, UciOutput)>(new() { SingleReader = true }); //AllowSynchronousContinuations?
+        _dataChannel = Channel.CreateUnbounded<(string, UciOutput)>(new() { SingleReader = true, AllowSynchronousContinuations = SynContinuations });
         _ioHandlerTokenSource = new();
 
         LoadEngines();

@@ -13,8 +13,6 @@ public class GeneralController : Controller
     private readonly bool PrintAllOutput;
     private readonly bool PrintRawUCI;
 
-    private readonly ConcurrentDictionary<string, List<UciOutput>> _infoOutputData = [];
-    private readonly ConcurrentDictionary<string, int> _reachedDepths = [];
     private readonly List<string> _rootPVGroups = [];
 
     private OutputMode _outputMode;
