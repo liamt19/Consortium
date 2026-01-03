@@ -28,12 +28,30 @@ public readonly struct UciOutput
     }
 
     public readonly string Line { get; }
+    public readonly bool IsInfo { get; }
+#if !GETTERS
+    public readonly int Depth { get; }
+    public readonly int SelDepth { get; }
+    public readonly ulong Nodes { get; }
+    public readonly ulong Time { get; }
+    public readonly string PV { get; }
+    public readonly string Bestmove { get; }
+#endif
     public UciOutput(string? line)
     {
         Line = line ?? string.Empty;
+#if !GETTERS
+        Depth = DepthRegex.Match(Line) is { Success: true } m1 ? int.Parse(m1.Groups[1].Value) : 0;
+        SelDepth = SelDepthRegex.Match(Line) is { Success: true } m2 ? int.Parse(m2.Groups[1].Value) : 0;
+        Nodes = NodesRegex.Match(Line) is { Success: true } m3 ? ulong.Parse(m3.Groups[1].Value) : 0;
+        Time = TimeRegex.Match(Line) is { Success: true } m4 ? ulong.Parse(m4.Groups[1].Value) : 0;
+        PV = PVRegex.Match(Line) is { Success: true } m5 ? m5.Groups[1].Value : "";
+        Bestmove = BestmoveRegex.Match(Line) is { Success: true } m6 ? m6.Groups[1].Value : "0000";
+        IsInfo = Line.StartsWith("info ") && !Line.StartsWith("info string");
+#endif
     }
 
-    public bool IsInfo => Line.StartsWith("info ") && !Line.StartsWith("info string");
+    //public bool IsInfo => Line.StartsWith("info ") && !Line.StartsWith("info string");
     public bool IsPrintable => IsInfo || !IsBlacklisted(Line);
     public bool IsBound => Line.Contains("upperbound") || Line.Contains("lowerbound");
     public bool IsCurrMove => Line.Contains("currmove");
@@ -41,7 +59,7 @@ public readonly struct UciOutput
     public bool HasDepth => Depth > 0;
     public bool HasSelDepth => SelDepth > 0;
     public bool ShouldPrint => !IsBound && !IsCurrMove;
-    public bool ShouldIncDepth => IsInfo && !IsBound && !IsCurrMove;
+    public bool ShouldIncDepth => IsInfo && HasDepth && !IsBound && !IsCurrMove;
 
     public string Score
     {
@@ -59,13 +77,15 @@ public readonly struct UciOutput
         }
     }
     public string RawScore => ScoreRegex.Match(Line) is { Success: true } m ? (m.Groups[1].Value + " " + m.Groups[2].Value) : "0";
+#if GETTERS
     public int Depth => DepthRegex.Match(Line) is { Success: true } m ? int.Parse(m.Groups[1].Value) : 0;
     public int SelDepth => SelDepthRegex.Match(Line) is { Success: true } m ? int.Parse(m.Groups[1].Value) : 0;
     public ulong Nodes => NodesRegex.Match(Line) is { Success: true } m ? ulong.Parse(m.Groups[1].Value) : 0;
     public ulong Time => TimeRegex.Match(Line) is { Success: true } m ? ulong.Parse(m.Groups[1].Value) : 0;
     public string PV => PVRegex.Match(Line) is { Success: true } m ? m.Groups[1].Value : "";
-    public int Hashfull => HashfullRegex.Match(Line) is { Success: true } m ? int.Parse(m.Groups[1].Value) : 0;
     public string Bestmove => BestmoveRegex.Match(Line) is { Success: true } m ? m.Groups[1].Value : "0000";
+#endif
+    public int Hashfull => HashfullRegex.Match(Line) is { Success: true } m ? int.Parse(m.Groups[1].Value) : 0;
 
     private string GetMoves(int n, int skip = 0)
     {

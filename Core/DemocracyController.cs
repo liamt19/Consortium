@@ -1,4 +1,6 @@
-﻿using Consortium.Misc;
+﻿#define TEMP
+
+using Consortium.Misc;
 using Consortium.UCI;
 using System.Collections.Concurrent;
 using System.Diagnostics;
@@ -12,9 +14,14 @@ namespace Consortium.Core;
 
 public class DemocracyController : Controller
 {
-    private readonly ConcurrentDictionary<string, string> _bestmoves = [];
-    private Engine? Leader => _engines.FirstOrDefault();
     private readonly Stopwatch _goTimer = Stopwatch.StartNew();
+
+    private readonly ConcurrentDictionary<string, string> _bestmoves = [];
+    private readonly DemocracySelectionStrategy _selectionStrategy = DemocracySelectionStrategy.PreferPrevious;
+    private string _previouslyUsedEngine;
+    private HashSet<string> _previouslySelectedKeys = [];
+
+    private Engine? Leader => _engines.FirstOrDefault();
 
     public DemocracyController()
     {
@@ -32,7 +39,7 @@ public class DemocracyController : Controller
         if (command.EqualsIgnoreCase("uci"))
         {
             var mpv = _engines.Select(e => e.Name).Select((name, idx) => $"{name}={idx + 1}");
-            Console.WriteLine($"info string multipv keys.values -> {string.Join(", ", mpv)}");
+            Log($"info string hashfull keys.values -> {string.Join(", ", mpv)}");
         }
 
         SendToAll(command);
@@ -53,8 +60,8 @@ public class DemocracyController : Controller
             if (!_bestmoves.TryAdd(eng, "0000"))
                 _bestmoves[eng] = "0000";
 
-            if (!_reachedDepths.TryAdd(eng, 0))
-                _reachedDepths[eng] = 0;
+            if (!_reachedDepths.TryAdd(eng, -1))
+                _reachedDepths[eng] = -1;
         }
     }
 
@@ -66,6 +73,7 @@ public class DemocracyController : Controller
         //Parallel.ForEach(_engines, eng => eng.SendCommand(command, false));
         Parallel.ForEach(_engines, eng =>
         {
+            Log($"info string {eng} ---> sending {command}");
             eng.SendCommand(command, false);
             Console.WriteLine($"info string sent {command} -> {eng}");
         });
@@ -90,42 +98,50 @@ public class DemocracyController : Controller
             _infoOutputData[engine].Add(uc);
 
             if (uc.ShouldIncDepth)
+            {
                 _reachedDepths[engine] = Math.Max(_reachedDepths[engine], uc.Depth);
 
-            // Send a "info depth x score ..." once all engines have completed depth x
-            if (engineNames.All(eng => _reachedDepths[eng] > printedDepth))
-            {
-                printedDepth++;
-                Console.WriteLine(GetOutputForDepth(engineNames, printedDepth));
+                // Send a "info depth x score ..." once all engines have completed depth x
+                if (engineNames.All(eng => _reachedDepths[eng] > printedDepth))
+                {
+                    printedDepth++;
+                    Log(GetOutputForDepth(engineNames, printedDepth));
+                }
             }
 
             if (uc.IsBestmove)
             {
-                Console.WriteLine($"info string {engine} bm -> {uc.Bestmove}");
+#if TEMP
+                Log($"info string {engine} ---> bm {uc.Bestmove}");
+#endif
                 _bestmoves[engine] = uc.Bestmove;
                 if (engineNames.All(eng => _bestmoves[eng] != "0000"))
                 {
-                    string majorityChoice = _bestmoves.Values
-                        .GroupBy(x => x)
-                        .MaxBy(g => g.Count())
-                        .Key;
+                    string majorityChoice = GetBestmoveToSend();
 
-                    Console.WriteLine($"bestmove {majorityChoice}");
+                    Log($"bestmove {majorityChoice}");
                 }
                 continue;
             }
-            else if (!uc.IsInfo && engine == leaderName)
+            
+            // Print all non-uci related stuff from the leader
+            if (!uc.IsInfo && engine == leaderName)
             {
-                Console.WriteLine(uc.Line);
+                Log(uc.Line);
             }
-            else if (!uc.IsInfo)
+
+#if TEMP
+            if (!uc.IsInfo && engine != leaderName)
             {
-                Console.WriteLine($"info string got {uc.Line} from {engine}");
+                Log($"info string {engine} ---> {uc.Line}");
             }
-            else if (engine == leaderName)
+
+            // Print info string of depths of all engines
+            if (uc.IsInfo && engine == leaderName)
             {
-                PrintEngineStatus();
+                //PrintEngineStatus();
             }
+#endif
         }
     }
 
@@ -136,15 +152,21 @@ public class DemocracyController : Controller
             .Select(x => (x.Key, uc: x.Value.Last(u => u.Depth == printedDepth)))
             .ToList();
 
-
         // Most agreed-upon PV
         var bestGroup = lastInfos
             .GroupBy(x => x.uc.PV.Split(' ')[0])
             .Select(x => x.ToList())
             .MaxBy(g => g.Count);
 
-        var bestInfo = bestGroup[Random.Shared.Next(0, bestGroup.Count)];
-        (var eng, var bestOutput) = bestInfo;
+        var groupToUse = _selectionStrategy switch
+        {
+            DemocracySelectionStrategy.Random => Random.Shared.Next(0, bestGroup.Count),
+            DemocracySelectionStrategy.PreferLeader => Math.Max(0, bestGroup.FindIndex(x => x.Key == Leader.Name)),
+            DemocracySelectionStrategy.PreferPrevious => Math.Max(0, bestGroup.FindIndex(x => x.Key == _previouslyUsedEngine)),
+        };
+
+        (var eng, var bestOutput) = bestGroup[groupToUse];
+        _previouslyUsedEngine = eng;
 
         var engUsed = engNames.IndexOf(eng) + 1;
         var agreed = bestGroup.Count;
@@ -161,25 +183,61 @@ public class DemocracyController : Controller
           .Append(" nodes ").Append(totalNodes)
           .Append(" time ").Append(time)
           .Append(" nps ").Append(nps)
-          .Append(" hashfull ").Append(bestOutput.Hashfull)
-          .Append(" multipv ").Append(engUsed)
+          .Append(" hashfull ").Append(engUsed)
           .Append(" tbhits ").Append(agreed)
           .Append(" pv ").Append(bestOutput.PV);
 
         return sb.ToString();
     }
 
+    private string GetBestmoveToSend()
+    {
+        var groups = _bestmoves
+            .GroupBy(kvp => kvp.Value)
+            .Select(g => new
+            {
+                Value = g.Key,
+                Count = g.Count(),
+                Keys = g.Select(kvp => kvp.Key).ToHashSet()
+            })
+            .ToList();
+
+        int majorityGroup = groups.Max(g => g.Count);
+        var tiedGroups = groups.Where(g => g.Count == majorityGroup).ToList();
+
+        if (tiedGroups.Count == 1)
+        {
+            _previouslySelectedKeys = tiedGroups[0].Keys;
+            return tiedGroups[0].Value;
+        }
+
+        if (_selectionStrategy == DemocracySelectionStrategy.PreferLeader)
+        {
+            var leaderSet = tiedGroups.FirstOrDefault(g => g.Keys.Contains(Leader.Name));
+            if (leaderSet != null)
+            {
+                _previouslySelectedKeys = leaderSet.Keys;
+                return leaderSet.Value;
+            }
+        }
+
+        if (_selectionStrategy == DemocracySelectionStrategy.PreferPrevious)
+        {
+            var prevSet = tiedGroups.OrderByDescending(g => g.Keys.Intersect(_previouslySelectedKeys).Count()).First();
+            _previouslySelectedKeys = prevSet.Keys;
+            return prevSet.Value;
+        }
+
+        var randomGroup = groups[Random.Shared.Next(0, groups.Count)];
+
+        _previouslySelectedKeys = randomGroup.Keys;
+        return randomGroup.Value;
+    }
+
     private void PrintEngineStatus()
     {
-        var lastInfos = _infoOutputData
-            .Select(x =>
-            {
-                int d = -1;
-                if (x.Value.Any(x => x.HasDepth))
-                    d = x.Value.Last(x => x.HasDepth).Depth;
-                return $"{x.Key}={d}";
-            });
+        var lastInfos = _reachedDepths.Select(x => $"{x.Key}={x.Value}");
 
-        Console.WriteLine($"info string {string.Join(", ", lastInfos)}");
+        Log($"info string {string.Join(", ", lastInfos)}");
     }
 }
