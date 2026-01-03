@@ -1,3 +1,8 @@
 <Solution>
-  <Project Path="Consortium.csproj" />
+  <Folder Name="/Solution Items/">
+    <File Path="Directory.Build.props" />
+  </Folder>
+  <Project Path="Consortium.Core/Consortium.Core.csproj" Id="b14dddf3-18a3-4e87-a7d4-688a5921cabc" />
+  <Project Path="Consortium.Democracy/Consortium.Democracy.csproj" Id="c6ca9801-e225-441e-812f-ce4678775010" />
+  <Project Path="Consortium.General/Consortium.General.csproj" Id="ca650e76-e157-4005-af7e-83ddae032811" />
 </Solution>

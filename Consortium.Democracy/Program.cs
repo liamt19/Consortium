@@ -1,8 +1,8 @@
-﻿global using static Consortium.Misc.Utils;
+﻿global using static Consortium.Core.Misc.Utils;
 using Consortium.Core;
 using System.Text;
 
-namespace Consortium;
+namespace Consortium.Democracy;
 
 internal class Program
 {
@@ -21,7 +21,6 @@ internal class Program
             shutdownToken.Cancel();
         };
 
-        //controller = new GeneralController();
         controller = new DemocracyController();
         while (!shutdownToken.IsCancellationRequested)
         {

@@ -1,4 +1,4 @@
-﻿namespace Consortium.Misc;
+﻿namespace Consortium.Core.Misc;
 
 public enum DemocracySelectionStrategy
 {

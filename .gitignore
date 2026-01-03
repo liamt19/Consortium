@@ -6,3 +6,9 @@
 /bin
 /obj
 *.exe
+/Consortium.Core/bin
+/Consortium.Core/obj
+/Consortium.Democracy/bin
+/Consortium.Democracy/obj
+/Consortium.General/bin
+/Consortium.General/obj

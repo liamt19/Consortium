@@ -1,5 +1,5 @@
-﻿using Consortium.Misc;
-using Consortium.UCI;
+﻿using Consortium.Core.Misc;
+using Consortium.Core.UCI;
 using System;
 using System.Collections.Concurrent;
 using System.Collections.Generic;

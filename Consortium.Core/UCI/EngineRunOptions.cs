@@ -1,9 +1,6 @@
 ﻿using Newtonsoft.Json;
-using System;
-using System.Collections.Generic;
-using System.Text;
 
-namespace Consortium.UCI;
+namespace Consortium.Core.UCI;
 
 public class EngineConfig
 {

@@ -1,16 +1,14 @@
 ﻿#define TEMP
 
-using Consortium.Misc;
-using Consortium.UCI;
+using Consortium.Core;
+using Consortium.Core.Misc;
+using Consortium.Core.UCI;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text;
-using System.Text.RegularExpressions;
-using System.Threading;
-using System.Threading.Channels;
 using System.Xml.Linq;
 
-namespace Consortium.Core;
+namespace Consortium.Democracy;
 
 public class DemocracyController : Controller
 {

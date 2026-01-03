@@ -1,10 +1,11 @@
-﻿using Consortium.UCI;
+﻿using Consortium.Core.Misc;
+using Consortium.Core.UCI;
 using Newtonsoft.Json;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
 using System.Text.RegularExpressions;
 
-namespace Consortium.Misc;
+namespace Consortium.Core.Misc;
 
 public static class Utils
 {

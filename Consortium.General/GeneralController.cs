@@ -1,11 +1,7 @@
-﻿using Consortium.Misc;
-using Consortium.UCI;
-using System.Collections.Concurrent;
-using System.Diagnostics;
-using System.Threading;
-using System.Threading.Channels;
+﻿using Consortium.Core;
+using Consortium.Core.Misc;
 
-namespace Consortium.Core;
+namespace Consortium.General;
 
 public class GeneralController : Controller
 {

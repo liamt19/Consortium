@@ -1,7 +1,7 @@
-﻿using Consortium.Misc;
+﻿using Consortium.Core.Misc;
 using System.Text.RegularExpressions;
 
-namespace Consortium.UCI;
+namespace Consortium.Core.UCI;
 
 public readonly struct UciOutput
 {

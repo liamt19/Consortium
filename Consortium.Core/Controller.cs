@@ -1,8 +1,7 @@
-﻿using Consortium.Misc;
-using Consortium.UCI;
+﻿
+using Consortium.Core.Misc;
+using Consortium.Core.UCI;
 using System.Collections.Concurrent;
-using System.Diagnostics;
-using System.Threading;
 using System.Threading.Channels;
 
 namespace Consortium.Core;

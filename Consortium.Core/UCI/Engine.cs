@@ -1,7 +1,7 @@
 ﻿using System.Diagnostics;
 using System.Threading.Channels;
 
-namespace Consortium.UCI;
+namespace Consortium.Core.UCI;
 
 public class Engine
 {

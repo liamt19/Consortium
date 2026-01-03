@@ -1,7 +1,7 @@
 ﻿using System.Text;
 using System.Threading.Channels;
 
-namespace Consortium.Misc;
+namespace Consortium.Core.Misc;
 
 public static class BatchedConsoleWriter
 {
