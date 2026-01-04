@@ -34,15 +34,16 @@ BUILD_OPTS := -c Release --self-contained true -p:PublishSingleFile=true
 release: clean publish-apps copy-binaries
 
 publish-apps:
-	dotnet publish $(GENERAL_PROJ) $(BUILD_OPTS) -o $(PUBLISH_DIR)\$(GENERAL_NAME)
-	dotnet publish $(DEMOCRACY_PROJ) $(BUILD_OPTS) -o $(PUBLISH_DIR)\$(DEMOCRACY_NAME)
+	dotnet publish $(GENERAL_PROJ) $(BUILD_OPTS) -o $(PUBLISH_DIR)
+	dotnet publish $(DEMOCRACY_PROJ) $(BUILD_OPTS) -o $(PUBLISH_DIR)
 
 copy-binaries:
-	$(MOVE_CMD) "$(PUBLISH_DIR)\$(GENERAL_NAME)\$(GENERAL_BINARY_NAME)" ".\$(GENERAL_BINARY_NAME)"
-	$(MOVE_CMD) "$(PUBLISH_DIR)\$(DEMOCRACY_NAME)\$(DEMOCRACY_BINARY_NAME)" ".\$(DEMOCRACY_BINARY_NAME)"
-	$(MOVE_CMD) "$(PUBLISH_DIR)\$(GENERAL_NAME)\config.json" ".\config.json"
+	$(MOVE_CMD) "$(PUBLISH_DIR)\$(GENERAL_BINARY_NAME)" ".\$(GENERAL_BINARY_NAME)"
+	$(MOVE_CMD) "$(PUBLISH_DIR)\$(DEMOCRACY_BINARY_NAME)" ".\$(DEMOCRACY_BINARY_NAME)"
+	$(MOVE_CMD) "$(PUBLISH_DIR)\config.json" ".\config.json"
 
 clean:
+	dotnet clean
 	$(CLEAN_OBJS_CMD)
 	$(CLEAN_GENERAL_CMD)
 	$(CLEAN_DEMOCRACY_CMD)

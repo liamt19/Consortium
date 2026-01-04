@@ -1,16 +1,16 @@
 ﻿global using static Consortium.Core.Misc.Utils;
-using Consortium.Core;
+using Consortium.Core.Misc;
 using System.Text;
 
 namespace Consortium.General;
 
 internal class Program
 {
-    private static Controller controller;
+    private static GeneralController controller;
+    public static CancellationTokenSource ShutdownToken = new();
 
     static void Main(string[] args)
     {
-        CancellationTokenSource shutdownToken = new();
         AppDomain.CurrentDomain.ProcessExit += (s, e) => Terminate();
 
         Console.SetIn(new StreamReader(Console.OpenStandardInput(), Encoding.UTF8, false, 2048 * 4));
@@ -18,11 +18,13 @@ internal class Program
         Console.CancelKeyPress += (s, e) =>
         {
             e.Cancel = true;
-            shutdownToken.Cancel();
+            ShutdownToken.Cancel();
         };
 
         controller = new GeneralController();
-        while (!shutdownToken.IsCancellationRequested)
+        Task.Run(() => ShutdownManager.StartMonitoring(controller, ShutdownToken));
+
+        while (!ShutdownToken.IsCancellationRequested)
         {
             string input = ReadConsoleLine();
             controller.ProcessInput(input);

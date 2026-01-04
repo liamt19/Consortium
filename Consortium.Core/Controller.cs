@@ -2,6 +2,7 @@
 using Consortium.Core.Misc;
 using Consortium.Core.UCI;
 using System.Collections.Concurrent;
+using System.Runtime.InteropServices;
 using System.Threading.Channels;
 
 namespace Consortium.Core;
@@ -35,6 +36,9 @@ public abstract class Controller
     }
 
     private void RemoveKilledProcesses() => _engines.RemoveAll(eng => eng.Proc is null || eng.Proc.HasExited);
+    protected void DoOnAll(Action<Engine> action) => _engines.ForEach(action);
+    protected void DoOnAllParallel(Action<Engine> action) => Parallel.ForEach(_engines, action);
+    public ReadOnlySpan<Engine> GetEngines() => CollectionsMarshal.AsSpan(_engines);
 
     protected void StartAllEngines()
     {

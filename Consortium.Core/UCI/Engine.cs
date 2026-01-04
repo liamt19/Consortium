@@ -15,6 +15,8 @@ public class Engine
     private TaskCompletionSource<string>? _expectTcs;
     private Predicate<string>? _expectPredicate;
 
+    public bool HasTerminated => Proc != null && Proc.HasExited;
+
     public Engine(EngineRunOptions runOpts, Channel<(string Eng, UciOutput Line)> dataChannel)
     {
         Name = runOpts.Name;
