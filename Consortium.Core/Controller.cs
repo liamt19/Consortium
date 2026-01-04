@@ -23,8 +23,10 @@ public abstract class Controller
     protected Controller()
     {
         _engines = [];
-        _dataChannel = Channel.CreateUnbounded<(string, UciOutput)>(new() { SingleReader = true, AllowSynchronousContinuations = SynContinuations });
         _ioHandlerTokenSource = new();
+
+        BoundedChannelOptions channelOpts = new(256) { SingleReader = true };
+        _dataChannel = Channel.CreateBounded<(string, UciOutput)>(channelOpts);
 
         LoadEngines();
         ResetOutputData();

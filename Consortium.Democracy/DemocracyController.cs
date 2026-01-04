@@ -18,12 +18,13 @@ public class DemocracyController : Controller
     private readonly DemocracySelectionStrategy _selectionStrategy = DemocracySelectionStrategy.PreferPrevious;
     private string _previouslyUsedEngine;
     private HashSet<string> _previouslySelectedKeys = [];
+    private IOBarrier _ioBarrier;
 
     private Engine? Leader => _engines.FirstOrDefault();
 
     public DemocracyController()
     {
-
+        _ioBarrier = new IOBarrier(Utils.EngineConfigs.Engines.Count);
     }
 
     public override void ProcessInput(string command)
@@ -37,7 +38,8 @@ public class DemocracyController : Controller
         if (command.EqualsIgnoreCase("uci"))
         {
             var mpv = _engines.Select(e => e.Name).Select((name, idx) => $"{name}={idx + 1}");
-            Log($"info string hashfull keys.values -> {string.Join(", ", mpv)}");
+            Log($"info string hashfull keys -> {string.Join(", ", mpv)}");
+            Log($"info string strategy is {_selectionStrategy}");
         }
 
         SendToAll(command);
@@ -68,12 +70,19 @@ public class DemocracyController : Controller
         if (command.StartsWithIgnoreCase("go"))
             _goTimer.Restart();
 
-        //Parallel.ForEach(_engines, eng => eng.SendCommand(command, false));
+        if (command == "isready")
+        {
+            _ioBarrier.AddBarrier("isready", "readyok", () =>
+            {
+                Log($"readyok");
+            });
+        }
+
         Parallel.ForEach(_engines, eng =>
         {
-            Log($"info string {eng} ---> sending {command}");
+            LogVerbose($"info string {eng} ---> sending {command}");
             eng.SendCommand(command, false);
-            Console.WriteLine($"info string sent {command} -> {eng}");
+            LogVerbose($"info string {eng} ------> sent {command}");
         });
     }
 
@@ -94,6 +103,7 @@ public class DemocracyController : Controller
         await foreach (var (engine, uc) in channelStream)
         {
             _infoOutputData[engine].Add(uc);
+            bool wasExpected = IOBarrier.IsBarrierable(uc.Line) && _ioBarrier.Arrive(engine, uc.Line);
 
             if (uc.ShouldIncDepth)
             {
@@ -110,7 +120,7 @@ public class DemocracyController : Controller
             if (uc.IsBestmove)
             {
 #if TEMP
-                Log($"info string {engine} ---> bm {uc.Bestmove}");
+                LogVerbose($"info string {engine} ---> bm {uc.Bestmove}");
 #endif
                 _bestmoves[engine] = uc.Bestmove;
                 if (engineNames.All(eng => _bestmoves[eng] != "0000"))
@@ -123,21 +133,23 @@ public class DemocracyController : Controller
             }
             
             // Print all non-uci related stuff from the leader
-            if (!uc.IsInfo && engine == leaderName)
+            if (!uc.IsInfo && engine == leaderName && !wasExpected)
             {
                 Log(uc.Line);
             }
 
 #if TEMP
-            if (!uc.IsInfo && engine != leaderName)
+            if (!uc.IsInfo && engine != leaderName && !wasExpected)
             {
-                Log($"info string {engine} ---> {uc.Line}");
+                LogVerbose($"info string {engine} ---> {uc.Line}");
             }
+#endif
 
+#if NO
             // Print info string of depths of all engines
             if (uc.IsInfo && engine == leaderName)
             {
-                //PrintEngineStatus();
+                PrintEngineStatus();
             }
 #endif
         }

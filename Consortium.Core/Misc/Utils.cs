@@ -1,4 +1,7 @@
-﻿using Consortium.Core.Misc;
+﻿
+#define LOG_VERBOSE
+
+using Consortium.Core.Misc;
 using Consortium.Core.UCI;
 using Newtonsoft.Json;
 using System.Diagnostics;
@@ -41,11 +44,16 @@ public static class Utils
     public static void Log() => Log(string.Empty);
     public static void Log(string s)
     {
-        if (PrintWithTimestamps)
-            s = $"{RightNow} - {s}";
-
         BatchedConsoleWriter.WriteLine(s);
         Debug.WriteLine(s);
+    }
+
+    public static void LogVerbose(string s)
+    {
+#if LOG_VERBOSE
+        BatchedConsoleWriter.WriteLine(s);
+        Debug.WriteLine(s);
+#endif
     }
 
     public static bool EqualsIgnoreCase(this string? a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
