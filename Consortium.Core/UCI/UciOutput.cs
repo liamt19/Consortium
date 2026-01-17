@@ -29,6 +29,7 @@ public readonly struct UciOutput
 
     public readonly string Line { get; }
     public readonly bool IsInfo { get; }
+
 #if !GETTERS
     public readonly int Depth { get; }
     public readonly int SelDepth { get; }
@@ -36,7 +37,9 @@ public readonly struct UciOutput
     public readonly ulong Time { get; }
     public readonly string PV { get; }
     public readonly string Bestmove { get; }
+    public readonly string PVFirst { get; }
 #endif
+
     public UciOutput(string? line)
     {
         Line = line ?? string.Empty;
@@ -48,10 +51,10 @@ public readonly struct UciOutput
         PV = PVRegex.Match(Line) is { Success: true } m5 ? m5.Groups[1].Value : "";
         Bestmove = BestmoveRegex.Match(Line) is { Success: true } m6 ? m6.Groups[1].Value : "0000";
         IsInfo = Line.StartsWith("info ") && !Line.StartsWith("info string");
+        PVFirst = PV.Split(' ')[0];
 #endif
     }
 
-    //public bool IsInfo => Line.StartsWith("info ") && !Line.StartsWith("info string");
     public bool IsPrintable => IsInfo || !IsBlacklisted(Line);
     public bool IsBound => Line.Contains("upperbound") || Line.Contains("lowerbound");
     public bool IsCurrMove => Line.Contains("currmove");
@@ -137,7 +140,7 @@ public readonly struct UciOutput
         List<string> strs =
         [
             DepthStr + SelDepthStr,
-            ScoreStr,
+            ScoreStr.Replace("cp ", string.Empty),
             NodeStr,
             TimeStr,
             pvGrp,

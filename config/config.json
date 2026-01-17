@@ -56,6 +56,76 @@
 			"remapped_cmds": [
 
 			]
+		},
+		{
+			"name": "caissa124",
+			"path": "D:/engines/caissa-1.24-x64-avx512.exe",
+			"opts": [
+
+			],
+			"remapped_cmds": [
+
+			]
+		},
+		{
+			"name": "heimdall",
+			"path": "D:/engines/heimdall-2c24d7a-native.exe",
+			"opts": [
+
+			],
+			"remapped_cmds": [
+
+			]
+		},
+		{
+			"name": "plenty7",
+			"path": "D:/engines/PlentyChess-7.0.0-windows-avx512vnni.exe",
+			"opts": [
+
+			],
+			"remapped_cmds": [
+
+			]
+		},
+		{
+			"name": "reckless",
+			"path": "D:/engines/reckless-windows-avx512.exe",
+			"opts": [
+
+			],
+			"remapped_cmds": [
+
+			]
+		},
+		{
+			"name": "cwork",
+			"path": "D:/engines/clockwork-1fad8b8-zen4.exe",
+			"opts": [
+
+			],
+			"remapped_cmds": [
+
+			]
+		},
+		{
+			"name": "seer",
+			"path": "D:/engines/seer-81fd319-native.exe",
+			"opts": [
+
+			],
+			"remapped_cmds": [
+
+			]
+		},
+		{
+			"name": "fish",
+			"path": "D:/engines/stockfish-eb5a65ae-avx2.exe",
+			"opts": [
+
+			],
+			"remapped_cmds": [
+
+			]
 		}
 	]
 }

@@ -1,11 +1,11 @@
 ﻿
-#define LOG_VERBOSE
-
 using Consortium.Core.Misc;
 using Consortium.Core.UCI;
 using Newtonsoft.Json;
+using System.Collections;
 using System.Diagnostics;
 using System.Runtime.InteropServices;
+using System.Text;
 using System.Text.RegularExpressions;
 
 namespace Consortium.Core.Misc;
@@ -15,6 +15,9 @@ public static class Utils
     public const bool PrintWithTimestamps = false;
 
     private static readonly Regex SetoptionRegex = new(@"^setoption name (.+) value (.+)$", RegexOptions.Compiled);
+    public static readonly Regex FenRegex = new(@"(?:[rnbqkpRNBQKP1-8]+\/){7}[rnbqkpRNBQKP1-8]+ [wb] (?:-|K?Q?k?q?) (?:-|[a-h][36]) \d* *\d*");
+
+    public static int EngineCount => EngineConfigs.Engines.Count;
 
     private static EngineConfig? CachedEngineConfig = null;
     public static EngineConfig EngineConfigs => (CachedEngineConfig ??= ReadConfig());
@@ -48,12 +51,10 @@ public static class Utils
         Debug.WriteLine(s);
     }
 
+    [Conditional("LOG_VERBOSE")]
     public static void LogVerbose(string s)
     {
-#if LOG_VERBOSE
-        BatchedConsoleWriter.WriteLine(s);
-        Debug.WriteLine(s);
-#endif
+        Log(s);
     }
 
     public static bool EqualsIgnoreCase(this string? a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
@@ -148,6 +149,33 @@ public static class Utils
                 break;
 
         return i;
+    }
+
+    public static string Stringify(this BitArray arr)
+    {
+        StringBuilder sb = new();
+        sb.Append('[');
+        for (int i = 0; i < arr.Length; i++)
+        {
+            sb.Append(arr[i] ? '1' : '0');
+        }
+        sb.Append(']');
+        return sb.ToString();
+    }
+
+    public static string Stringify<T>(this HashSet<T> set) where T : notnull
+    {
+        var arr = set.ToArray();
+        StringBuilder sb = new();
+        sb.Append('[');
+        for (int i = 0; i < arr.Length; i++)
+        {
+            sb.Append(arr[i].ToString());
+            if (i != (arr.Length - 1))
+                sb.Append(", ");
+        }
+        sb.Append(']');
+        return sb.ToString();
     }
 
 

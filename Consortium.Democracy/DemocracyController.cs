@@ -3,28 +3,43 @@
 using Consortium.Core;
 using Consortium.Core.Misc;
 using Consortium.Core.UCI;
+using System.Collections;
 using System.Collections.Concurrent;
 using System.Diagnostics;
 using System.Text;
+using System.Threading.Channels;
 using System.Xml.Linq;
 
 namespace Consortium.Democracy;
 
 public class DemocracyController : Controller
 {
+    const int MaxDepth = 256;
+
     private readonly Stopwatch _goTimer = Stopwatch.StartNew();
 
-    private readonly ConcurrentDictionary<string, string> _bestmoves = [];
-    private readonly DemocracySelectionStrategy _selectionStrategy = DemocracySelectionStrategy.PreferPrevious;
-    private string _previouslyUsedEngine;
+    private const DemocracySelectionStrategy _selectionStrategy = DemocracySelectionStrategy.PreferPrevious;
     private HashSet<string> _previouslySelectedKeys = [];
-    private IOBarrier _ioBarrier;
+    private readonly IOBarrier _ioBarrier;
+
+    private readonly Dictionary<string, int> _engineToIndex = [];
+    private readonly int _engineCount;
+
+    private readonly List<UciOutput>[] _depthBuckets;
+    private readonly BitArray[] _depthReached;
 
     private Engine? Leader => _engines.FirstOrDefault();
 
     public DemocracyController()
     {
-        _ioBarrier = new IOBarrier(Utils.EngineConfigs.Engines.Count);
+        _engineCount = EngineCount;
+        _ioBarrier = new IOBarrier(_engineCount);
+
+        for (int i = 0; i < _engineCount; i++)
+            _engineToIndex.Add(EngineConfigs.Engines[i].Name, i);
+
+        _depthBuckets = [.. Enumerable.Range(0, MaxDepth + 1).Select(_ => new List<UciOutput>(_engineCount))];
+        _depthReached = [.. Enumerable.Range(0, MaxDepth + 1).Select(_ => new BitArray(_engineCount))];
     }
 
     public override void ProcessInput(string command)
@@ -48,20 +63,31 @@ public class DemocracyController : Controller
 
     protected override void ResetOutputData(string? command = null)
     {
+#if NO
         _infoOutputData.Clear();
         _reachedDepths.Clear();
-        _bestmoves.Clear();
 
         foreach (var eng in _engines.Select(x => x.Name))
         {
             if (!_infoOutputData.TryAdd(eng, []))
                 _infoOutputData[eng].Clear();
 
-            if (!_bestmoves.TryAdd(eng, "0000"))
-                _bestmoves[eng] = "0000";
-
             if (!_reachedDepths.TryAdd(eng, -1))
                 _reachedDepths[eng] = -1;
+        }
+#endif
+        if (_depthReached != null)
+        {
+            foreach (var bitarr in _depthReached)
+            {
+                bitarr.SetAll(false);
+            }
+        }
+        
+        if (_depthBuckets != null)
+        {
+            foreach (var bucket in _depthBuckets)
+                bucket.Clear();
         }
     }
 
@@ -94,26 +120,39 @@ public class DemocracyController : Controller
         _ioHandlerTask = Task.Run(() => IOHandlerTaskProc(_ioHandlerTokenSource.Token));
     }
 
+
     private async Task IOHandlerTaskProc(CancellationToken token)
     {
+        if (Leader is null) return;
+
         int printedDepth = 0;
         var leaderName = Leader!.Name;
-        var engineNames = _engines.Select(e => e.Name).ToList();
+        Dictionary<string, string> bestmoves = [];
+
         var channelStream = _dataChannel.Reader.ReadAllAsync(token);
         await foreach (var (engine, uc) in channelStream)
         {
-            _infoOutputData[engine].Add(uc);
             bool wasExpected = IOBarrier.IsBarrierable(uc.Line) && _ioBarrier.Arrive(engine, uc.Line);
 
             if (uc.ShouldIncDepth)
             {
-                _reachedDepths[engine] = Math.Max(_reachedDepths[engine], uc.Depth);
-
-                // Send a "info depth x score ..." once all engines have completed depth x
-                if (engineNames.All(eng => _reachedDepths[eng] > printedDepth))
+                int d = uc.Depth;
+                if (uc.Depth <= MaxDepth)
                 {
-                    printedDepth++;
-                    Log(GetOutputForDepth(engineNames, printedDepth));
+                    int engIdx = _engineToIndex[engine];
+                    _depthBuckets[d].Add(uc);
+                    LogVerbose($"info string {engine}@{d} --> {engIdx} = {_depthReached[d].Stringify()}");
+                    if (!_depthReached[d][engIdx])
+                    {
+                        _depthReached[d][engIdx] = true;
+
+                        // Barrier reached?
+                        if (_depthReached[d].HasAllSet())
+                        {
+                            printedDepth = d;
+                            Log(GetOutputForDepth(printedDepth));
+                        }
+                    }
                 }
             }
 
@@ -122,24 +161,23 @@ public class DemocracyController : Controller
 #if TEMP
                 LogVerbose($"info string {engine} ---> bm {uc.Bestmove}");
 #endif
-                _bestmoves[engine] = uc.Bestmove;
-                if (engineNames.All(eng => _bestmoves[eng] != "0000"))
+                bestmoves[engine] = uc.Bestmove;
+                if (bestmoves.Count == _engineCount)
                 {
-                    string majorityChoice = GetBestmoveToSend();
-
-                    Log($"bestmove {majorityChoice}");
+                    Log($"bestmove {GetBestmoveToSend(bestmoves)}");
                 }
+
                 continue;
             }
             
             // Print all non-uci related stuff from the leader
-            if (!uc.IsInfo && engine == leaderName && !wasExpected)
+            if (!uc.IsInfo && !wasExpected && engine == leaderName)
             {
                 Log(uc.Line);
             }
 
 #if TEMP
-            if (!uc.IsInfo && engine != leaderName && !wasExpected)
+            if (!uc.IsInfo && !wasExpected && engine != leaderName)
             {
                 LogVerbose($"info string {engine} ---> {uc.Line}");
             }
@@ -155,33 +193,100 @@ public class DemocracyController : Controller
         }
     }
 
-    private string GetOutputForDepth(List<string> engNames, int printedDepth)
+#if MAYBE
+    private async Task DepthAggregator(CancellationToken token)
     {
-        var lastInfos = _infoOutputData
-            .Where(x => x.Value.Any(u => u.Depth == printedDepth))
-            .Select(x => (x.Key, uc: x.Value.Last(u => u.Depth == printedDepth)))
-            .ToList();
+        int printedDepth = 0;
+        Span<int> depthCounts = new int[_engineCount];
+        var engineNames = _engines.Select(e => e.Name).ToList();
+
+        await foreach (var (engine, uc) in _infoChannel.Reader.ReadAllAsync(token))
+        {
+            if (!uc.ShouldIncDepth) continue;
+
+            if (uc.Depth > depthCounts[_engineToIndex[engine]])
+            {
+                depthCounts[_engineToIndex[engine]] = uc.Depth;
+
+                // Send a "info depth x score ..." once all engines have completed depth x
+                if (engineNames.All(eng => _reachedDepths[eng] > printedDepth))
+                {
+                    printedDepth++;
+                    Log(GetOutputForDepth(engineNames, printedDepth));
+                    depthCounts.Clear();
+                }
+            }
+        }
+    }
+
+    private async Task MiscAggregator(CancellationToken token)
+    {
+        var leaderName = Leader!.Name;
+        var engineNames = _engines.Select(e => e.Name).ToList();
+        await foreach (var (engine, uc) in _infoChannel.Reader.ReadAllAsync(token))
+        {
+            if (uc.IsInfo)
+                continue;
+
+            bool wasExpected = IOBarrier.IsBarrierable(uc.Line) && _ioBarrier.Arrive(engine, uc.Line);
+
+            // Print all non-uci related stuff from the leader
+            if (engine == leaderName && !wasExpected)
+            {
+                Log(uc.Line);
+            }
+
+#if TEMP
+            if (engine != leaderName && !wasExpected)
+            {
+                LogVerbose($"info string {engine} ---> {uc.Line}");
+            }
+#endif
+        }
+    }
+
+    private async Task BestmoveAggregator(CancellationToken token)
+    {
+        Dictionary<string, string> bestmoves = [];
+        await foreach (var (engine, uc) in _infoChannel.Reader.ReadAllAsync(token))
+        {
+            if (!uc.IsBestmove)
+                continue;
+
+#if TEMP
+            LogVerbose($"info string {engine} ---> bm {uc.Bestmove}");
+#endif
+            bestmoves.TryAdd(engine, uc.Bestmove);
+            if (bestmoves.Count == _engineCount)
+            {
+                Log($"bestmove {GetBestmoveToSend(bestmoves)}");
+            }
+        }
+    }
+#endif
+
+    private string GetOutputForDepth(int printedDepth)
+    {
+        var infos = _depthBuckets[printedDepth];
+        var bestGrouping = infos
+            .GroupBy(x => x.PVFirst)
+            .MaxBy(g => g.Count());
 
         // Most agreed-upon PV
-        var bestGroup = lastInfos
-            .GroupBy(x => x.uc.PV.Split(' ')[0])
-            .Select(x => x.ToList())
-            .MaxBy(g => g.Count);
+        var bestOutput = bestGrouping.First();
 
-        var groupToUse = _selectionStrategy switch
-        {
-            DemocracySelectionStrategy.Random => Random.Shared.Next(0, bestGroup.Count),
-            DemocracySelectionStrategy.PreferLeader => Math.Max(0, bestGroup.FindIndex(x => x.Key == Leader.Name)),
-            DemocracySelectionStrategy.PreferPrevious => Math.Max(0, bestGroup.FindIndex(x => x.Key == _previouslyUsedEngine)),
-        };
+        //(var eng, var bestOutput) = bestGroup[groupToUse];
+        //_previouslyUsedEngine = eng;
 
-        (var eng, var bestOutput) = bestGroup[groupToUse];
-        _previouslyUsedEngine = eng;
 
-        var engUsed = engNames.IndexOf(eng) + 1;
-        var agreed = bestGroup.Count;
+        //var engUsed = engNames.IndexOf(eng) + 1;
+        var engUsed = bestOutput.Hashfull;
+        var agreed = bestGrouping.Count();
 
-        var totalNodes = lastInfos.Select(x => (long)x.uc.Nodes).Sum();
+        ulong totalNodes = 0;
+        foreach (var info in infos)
+            totalNodes += info.Nodes;
+
         var time = (long)Math.Max(1.0, _goTimer.Elapsed.TotalMilliseconds);
         var nps = (long)(totalNodes / (time / 1000.0));
 
@@ -200,9 +305,9 @@ public class DemocracyController : Controller
         return sb.ToString();
     }
 
-    private string GetBestmoveToSend()
+    private string GetBestmoveToSend(Dictionary<string, string> bestmoves)
     {
-        var groups = _bestmoves
+        var groups = bestmoves
             .GroupBy(kvp => kvp.Value)
             .Select(g => new
             {
@@ -212,12 +317,16 @@ public class DemocracyController : Controller
             })
             .ToList();
 
+        var groupStrs = "{" + string.Join(", ", groups.Select(g => g.Value + ": " + g.Keys.Stringify())) + "}";
+        Log($"info string groups are {groupStrs}");
+
         int majorityGroup = groups.Max(g => g.Count);
         var tiedGroups = groups.Where(g => g.Count == majorityGroup).ToList();
 
         if (tiedGroups.Count == 1)
         {
             _previouslySelectedKeys = tiedGroups[0].Keys;
+            Log($"info string simple majority group is {_previouslySelectedKeys.Stringify()}");
             return tiedGroups[0].Value;
         }
 
@@ -233,9 +342,10 @@ public class DemocracyController : Controller
 
         if (_selectionStrategy == DemocracySelectionStrategy.PreferPrevious)
         {
-            var prevSet = tiedGroups.OrderByDescending(g => g.Keys.Intersect(_previouslySelectedKeys).Count()).First();
-            _previouslySelectedKeys = prevSet.Keys;
-            return prevSet.Value;
+            var newSet = tiedGroups.OrderByDescending(g => g.Keys.Intersect(_previouslySelectedKeys).Count()).First();
+            Log($"info string prev group was {_previouslySelectedKeys.Stringify()}, now {newSet.Keys.Stringify()}");
+            _previouslySelectedKeys = newSet.Keys;
+            return newSet.Value;
         }
 
         var randomGroup = groups[Random.Shared.Next(0, groups.Count)];

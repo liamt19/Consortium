@@ -42,6 +42,10 @@ public class GeneralController : Controller
             return;
         }
 
+        if (FenRegex.IsMatch(command) && !command.StartsWithIgnoreCase("position fen")) {
+            command = "position fen " + command.TrimStart();
+        }
+
         SendToAll(command);
     }
 
