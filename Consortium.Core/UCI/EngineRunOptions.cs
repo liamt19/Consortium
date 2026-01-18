@@ -7,6 +7,9 @@ public class EngineConfig
     [JsonProperty("sync_by_depth")]
     public bool SyncByDepth { get; set; } = new();
 
+    [JsonProperty("sync_depth_order_by_time")]
+    public bool OrderByTime { get; set; } = new();
+
     [JsonProperty("print_all_output")]
     public bool PrintAllOutput { get; set; } = new();
 

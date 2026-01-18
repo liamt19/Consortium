@@ -11,6 +11,10 @@ Starts up multiple UCI engines, sends each of them the same commands and aggrega
 * For "go" commands, wait for all engines to reach depth X before printing any output for that depth.
   - If false, print engine outputs as soon as they arrive.
 
+**"sync_depth_order_by_time"** (*sync_by_depth* only, you probably want this left to false)
+* If true, print outputs for depth X in ascending order of their "time" components.
+  - If false, info lines are based on the order of engines within the config.
+
 **"print_all_output"**
 * If false, skips printing some extraneous engine outputs, e.g. `option name ...`, `info ... upperbound ...`
 

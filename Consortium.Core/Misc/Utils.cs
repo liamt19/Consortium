@@ -60,6 +60,12 @@ public static class Utils
     public static bool EqualsIgnoreCase(this string? a, string b) => string.Equals(a, b, StringComparison.OrdinalIgnoreCase);
     public static bool StartsWithIgnoreCase(this string? a, string b) => a?.StartsWith(b, StringComparison.OrdinalIgnoreCase) == true;
 
+    public static void AddIfMissing<T>(this List<T> list, T what) where T : notnull
+    {
+        if (!list.Contains(what))
+            list.Add(what);
+    }
+
     private static readonly long ProcStartTime = DateTimeOffset.Now.Ticks;
     public static long RightNow => (DateTimeOffset.Now.Ticks - ProcStartTime) / (TimeSpan.NanosecondsPerTick);
 
@@ -97,56 +103,15 @@ public static class Utils
         return (Environment.OSVersion.Version.Build >= 22000);
     }
 
-    public static Dictionary<string, (int groupNum, int ansiLen)> GroupPVs(List<string> rootPVGroups, List<(string name, UciOutput uc)> outputs)
-    {
-        var dict = new Dictionary<string, (int groupNum, int ansiLen)>();
 
-        var groups = outputs.GroupBy(x => x.uc.PV.Split(' ')[0])
-            .Select(x => x.ToList())
-            .OrderByDescending(g => g.Count)
-            .ToList();
-
-        foreach (var pv in outputs.Select(x => x.uc.PV.Split(' ')[0]))
-        {
-            if (!rootPVGroups.Contains(pv))
-            {
-                rootPVGroups.Add(pv);
-            }
-        }
-
-
-        foreach (var group in groups)
-        {
-            var tokens = group
-                .Select(m => (m.name, pv: m.uc.PV.Split(' ')))
-                .ToList();
-
-            foreach (var (name, pv) in tokens)
-            {
-                int bestOverlap = 1;
-
-                foreach (var (_, otherPv) in tokens)
-                {
-                    if (ReferenceEquals(pv, otherPv))
-                        continue;
-
-                    bestOverlap = Math.Max(bestOverlap, PrefixOverlap(pv, otherPv));
-                }
-
-                int gNum = rootPVGroups.IndexOf(pv[0]);
-                dict.Add(name, (gNum, bestOverlap));
-            }
-        }
-
-        return dict;
-    }
-
-    private static int PrefixOverlap(string[] a, string[] b)
+    public static int PrefixOverlap(string[] a, string[] b)
     {
         int i = 0;
         for (; i < Math.Min(a.Length, b.Length); i++)
+        {
             if (a[i] != b[i])
                 break;
+        }
 
         return i;
     }
@@ -176,6 +141,12 @@ public static class Utils
         }
         sb.Append(']');
         return sb.ToString();
+    }
+
+    public static string StringifyGroups(Dictionary<string, (int, int)> dict)
+    {
+        var arr = dict.Select(kv => $"({kv.Key}={kv.Value.Item1}/{kv.Value.Item2})").ToArray();
+        return $"[{string.Join(", ", arr)}]";
     }
 
 

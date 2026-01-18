@@ -1,23 +1,46 @@
 ﻿using Consortium.Core;
 using Consortium.Core.Misc;
+using Consortium.Core.UCI;
+using System.Collections;
+using System.Text;
 
 namespace Consortium.General;
 
 public class GeneralController : Controller
 {
     private readonly bool SyncByDepth;
+    private readonly bool OrderByTime;
     private readonly bool PrintAllOutput;
     private readonly bool PrintRawUCI;
 
     private readonly List<string> _rootPVGroups = [];
+
+    private readonly List<string> _engineNames = [];
+    private readonly Dictionary<string, int> _engineToIndex = [];
+
+    private readonly List<(string, UciOutput)>[] _depthBuckets;
+    private readonly BitArray[] _depthReached;
 
     private OutputMode _outputMode;
 
     public GeneralController()
     {
         SyncByDepth = Utils.EngineConfigs.SyncByDepth;
+        OrderByTime = Utils.EngineConfigs.OrderByTime;
         PrintAllOutput = Utils.EngineConfigs.PrintAllOutput;
         PrintRawUCI = Utils.EngineConfigs.PrintRawUCI;
+
+        for (int i = 0; i < _engineCount; i++)
+        {
+            _engineNames.Add(EngineConfigs.Engines[i].Name);
+            _engineToIndex.Add(EngineConfigs.Engines[i].Name, i);
+        }
+
+        var mpv = _engineToIndex.Select(name => $"{name.Key}={name.Value}");
+        Log($"info string eng idx's -> {string.Join(", ", mpv)}");
+
+        _depthBuckets = [.. Enumerable.Range(0, MaxDepth + 1).Select(_ => new List<(string, UciOutput)>(_engineCount))];
+        _depthReached = [.. Enumerable.Range(0, MaxDepth + 1).Select(_ => new BitArray(_engineCount))];
     }
 
     protected override void AfterEnginesStarted()
@@ -38,7 +61,7 @@ public class GeneralController : Controller
 
         if (Insights.IsBreakdownCommand(command))
         {
-            Insights.BreakdownOf(_infoOutputData, command);
+            Insights.BreakdownOf(_depthBuckets, command);
             return;
         }
 
@@ -55,17 +78,20 @@ public class GeneralController : Controller
         if (command.StartsWithIgnoreCase("stop"))
             return;
 
-        _infoOutputData.Clear();
-        _reachedDepths.Clear();
         _rootPVGroups.Clear();
 
-        foreach (var eng in _engines.Select(x => x.Name))
+        if (_depthReached != null)
         {
-            if (!_infoOutputData.TryAdd(eng, []))
-                _infoOutputData[eng].Clear();
+            foreach (var bitarr in _depthReached)
+            {
+                bitarr.SetAll(false);
+            }
+        }
 
-            if (!_reachedDepths.TryAdd(eng, 0))
-                _reachedDepths[eng] = 0;
+        if (_depthBuckets != null)
+        {
+            foreach (var bucket in _depthBuckets)
+                bucket.Clear();
         }
     }
 
@@ -84,8 +110,6 @@ public class GeneralController : Controller
 
     private async Task IOHandlerTaskProc(CancellationToken token)
     {
-        int printedDepth = 0;
-        var engineNames = _engines.Select(e => e.Name).ToList();
         var channelStream = _dataChannel.Reader.ReadAllAsync(token);
         await foreach (var (engine, uc) in channelStream)
         {
@@ -100,31 +124,84 @@ public class GeneralController : Controller
                 continue;
             }
 
-            // Depth-sync'd
-            if (uc.IsInfo)
+            int d = uc.Depth;
+            if (!uc.ShouldIncDepth || d > MaxDepth)
+                continue;
+
+            int engIdx = _engineToIndex[engine];
+            LogVerbose($"{FormatEngineName(engine)} >> {uc.ToString(true)} --> {engIdx,-3} = {_depthReached[d].Stringify(),-20}");
+
+            if (!_depthReached[d][engIdx])
             {
-                _infoOutputData[engine].Add(uc);
+                _depthReached[d][engIdx] = true;
+                _depthBuckets[d].Add((engine, uc));
 
-                if (uc.ShouldIncDepth)
-                    _reachedDepths[engine] = Math.Max(_reachedDepths[engine], uc.Depth);
-
-                if (engineNames.All(eng => _reachedDepths[eng] > printedDepth))
+                // Barrier reached?
+                if (_depthReached[d].HasAllSet())
                 {
-                    printedDepth++;
-
-                    var lastInfos = _infoOutputData.Select(x => (x.Key, x.Value.Last(u => u.Depth == printedDepth))).ToList();
-                    var pvToGroup = GroupPVs(_rootPVGroups, lastInfos);
-
-                    foreach (var eng in engineNames)
-                    {
-                        (int thisGroup, int ansiLen) = pvToGroup[eng];
-                        var outForDepth = _infoOutputData[eng].Last(u => u.Depth == printedDepth);
-                        Log($"{FormatEngineName(eng)} >> {outForDepth.FormatAnsi(thisGroup, ansiLen, PrintRawUCI)}");
-                    }
-                    Log();
+                    LogVerbose($"info string depth {d} barrier reached");
+                    PrintOutputsForDepth(d);
                 }
             }
+
         }
+    }
+
+    private void PrintOutputsForDepth(int printedDepth)
+    {
+        var infos = _depthBuckets[printedDepth];
+        var pvToGroup = GroupPVs(infos);
+        
+        if (!OrderByTime)
+        {
+            infos = [.. infos.OrderBy(x => _engineToIndex[x.Item1])];
+        }
+
+        foreach ((string eng, UciOutput uc) in infos)
+        {
+            (int thisGroup, int ansiLen) = pvToGroup[eng];
+            Log($"{FormatEngineName(eng)} >> {uc.FormatAnsi(thisGroup, ansiLen, PrintRawUCI)}");
+        }
+        Log();
+    }
+
+    public Dictionary<string, (int groupNum, int ansiLen)> GroupPVs(List<(string name, UciOutput uc)> outputs)
+    {
+        var dict = new Dictionary<string, (int groupNum, int ansiLen)>();
+
+        var pvGroups = outputs.GroupBy(x => x.uc.PVFirst);
+        foreach (var pv in pvGroups.Select(g => g.Key))
+        {
+            LogVerbose($"{pv} is group {_rootPVGroups.Count}");
+            _rootPVGroups.AddIfMissing(pv);
+        }
+        
+        var groups = pvGroups
+            .Select(x => x.ToList())
+            .OrderByDescending(g => g.Count)
+            .ToList();
+
+        foreach (var group in groups)
+        {
+            var tokens = group
+                .Select(m => (m.name, pv: m.uc.PV.Split(' ')))
+                .ToList();
+
+            foreach (var (name, pv) in tokens)
+            {
+                int bestOverlap = 1;
+                foreach (var (otherName, otherPv) in tokens)
+                {
+                    if (name == otherName) continue;
+                    bestOverlap = Math.Max(bestOverlap, PrefixOverlap(pv, otherPv));
+                }
+
+                int gNum = _rootPVGroups.IndexOf(pv[0]);
+                dict.Add(name, (gNum, bestOverlap));
+            }
+        }
+
+        return dict;
     }
 
 }

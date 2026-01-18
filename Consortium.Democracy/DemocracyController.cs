@@ -14,8 +14,6 @@ namespace Consortium.Democracy;
 
 public class DemocracyController : Controller
 {
-    const int MaxDepth = 256;
-
     private readonly Stopwatch _goTimer = Stopwatch.StartNew();
 
     private const DemocracySelectionStrategy _selectionStrategy = DemocracySelectionStrategy.PreferPrevious;
@@ -23,7 +21,6 @@ public class DemocracyController : Controller
     private readonly IOBarrier _ioBarrier;
 
     private readonly Dictionary<string, int> _engineToIndex = [];
-    private readonly int _engineCount;
 
     private readonly List<UciOutput>[] _depthBuckets;
     private readonly BitArray[] _depthReached;
@@ -32,7 +29,6 @@ public class DemocracyController : Controller
 
     public DemocracyController()
     {
-        _engineCount = EngineCount;
         _ioBarrier = new IOBarrier(_engineCount);
 
         for (int i = 0; i < _engineCount; i++)
@@ -140,7 +136,8 @@ public class DemocracyController : Controller
                 if (uc.Depth <= MaxDepth)
                 {
                     int engIdx = _engineToIndex[engine];
-                    _depthBuckets[d].Add(uc);
+                    //_depthBuckets[d].Add(uc);
+                    _depthBuckets[d][engIdx] = uc;
                     LogVerbose($"info string {engine}@{d} --> {engIdx} = {_depthReached[d].Stringify()}");
                     if (!_depthReached[d][engIdx])
                     {
@@ -354,10 +351,4 @@ public class DemocracyController : Controller
         return randomGroup.Value;
     }
 
-    private void PrintEngineStatus()
-    {
-        var lastInfos = _reachedDepths.Select(x => $"{x.Key}={x.Value}");
-
-        Log($"info string {string.Join(", ", lastInfos)}");
-    }
 }

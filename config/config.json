@@ -1,5 +1,6 @@
 {
 	"sync_by_depth": true,
+	"sync_depth_order_by_time": false,
 	"print_all_output": true,
 	"print_raw_uci": false,
 	"default_opts": [

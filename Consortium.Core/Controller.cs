@@ -9,19 +9,20 @@ namespace Consortium.Core;
 
 public abstract class Controller
 {
-    private const bool SynContinuations = false;
+
+    protected const int MaxDepth = 256;
+
+    protected readonly int _engineCount;
 
     protected readonly List<Engine> _engines;
     protected readonly Channel<(string Eng, UciOutput Line)> _dataChannel;
-
-    protected readonly ConcurrentDictionary<string, List<UciOutput>> _infoOutputData = [];
-    protected readonly ConcurrentDictionary<string, int> _reachedDepths = [];
 
     protected Task? _ioHandlerTask;
     protected CancellationTokenSource _ioHandlerTokenSource;
 
     protected Controller()
     {
+        _engineCount = EngineCount;
         _engines = [];
         _ioHandlerTokenSource = new();
 

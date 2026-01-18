@@ -23,8 +23,22 @@ public static class Insights
         return command.StartsWithIgnoreCase("breakdown");
     }
 
-    public static void BreakdownOf(ConcurrentDictionary<string, List<UciOutput>> dict, string field = FIELD_SCORE)
+    public static void BreakdownOf(List<(string, UciOutput)>[] depthBuckets, string field = FIELD_SCORE)
     {
+        // 0..MaxDepth lists of (engine name, UciOutput)
+        // Into dict<engine name, List<UciOutput>>
+        Dictionary<string, List<UciOutput>> dict = [];
+        foreach (var depthList in depthBuckets)
+        {
+            foreach (var (engName, outp) in depthList)
+            {
+                if (!dict.ContainsKey(engName))
+                    dict[engName] = [];
+
+                dict[engName].Add(outp);
+            }
+        }
+
         field = field.Trim().ToLower();
         if (field.StartsWith("breakdown "))
             field = field["breakdown ".Length..].Trim();
@@ -41,7 +55,7 @@ public static class Insights
         PrintBreakdown(dict, field);
     }
 
-    private static void PrintBreakdown(ConcurrentDictionary<string, List<UciOutput>> dict, string field = FIELD_SCORE)
+    private static void PrintBreakdown(Dictionary<string, List<UciOutput>> dict, string field = FIELD_SCORE)
     {
         var keys = dict.Keys.ToList();
         keys.Insert(0, "depth");
