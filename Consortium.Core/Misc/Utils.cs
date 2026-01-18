@@ -149,6 +149,16 @@ public static class Utils
         return $"[{string.Join(", ", arr)}]";
     }
 
+    public static string Stringify<A, B>(this List<(A, B)> list)
+    {
+        return $"[{string.Join(", ", list.Select(a => $"{a.Item1}={a.Item2}"))}]";
+    }
+
+    public static string Stringify<K, V>(this Dictionary<K, V> dict) where K : notnull
+    {
+        return $"[{string.Join(", ", dict.Select(a => $"{a.Key}={a.Value}"))}]";
+    }
+
 
     private static readonly List<int> ANSI_GROUPS = [161, 10, 12, 11, 13, 14, 160, 166, 128, 172, 214, 112, 122, 81];
     public static string AnsiFormatForGroup(string s, int group) => ToAnsi(s, ANSI_GROUPS[Math.Min(group, ANSI_GROUPS.Count)]);

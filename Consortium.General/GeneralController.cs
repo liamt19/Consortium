@@ -14,13 +14,6 @@ public class GeneralController : Controller
     private readonly bool PrintRawUCI;
 
     private readonly List<string> _rootPVGroups = [];
-
-    private readonly List<string> _engineNames = [];
-    private readonly Dictionary<string, int> _engineToIndex = [];
-
-    private readonly List<(string, UciOutput)>[] _depthBuckets;
-    private readonly BitArray[] _depthReached;
-
     private OutputMode _outputMode;
 
     public GeneralController()
@@ -30,17 +23,9 @@ public class GeneralController : Controller
         PrintAllOutput = Utils.EngineConfigs.PrintAllOutput;
         PrintRawUCI = Utils.EngineConfigs.PrintRawUCI;
 
-        for (int i = 0; i < _engineCount; i++)
-        {
-            _engineNames.Add(EngineConfigs.Engines[i].Name);
-            _engineToIndex.Add(EngineConfigs.Engines[i].Name, i);
-        }
-
         var mpv = _engineToIndex.Select(name => $"{name.Key}={name.Value}");
         Log($"info string eng idx's -> {string.Join(", ", mpv)}");
 
-        _depthBuckets = [.. Enumerable.Range(0, MaxDepth + 1).Select(_ => new List<(string, UciOutput)>(_engineCount))];
-        _depthReached = [.. Enumerable.Range(0, MaxDepth + 1).Select(_ => new BitArray(_engineCount))];
     }
 
     protected override void AfterEnginesStarted()

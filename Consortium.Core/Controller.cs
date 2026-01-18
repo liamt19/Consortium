@@ -1,6 +1,7 @@
 ﻿
 using Consortium.Core.Misc;
 using Consortium.Core.UCI;
+using System.Collections;
 using System.Collections.Concurrent;
 using System.Runtime.InteropServices;
 using System.Threading.Channels;
@@ -17,6 +18,12 @@ public abstract class Controller
     protected readonly List<Engine> _engines;
     protected readonly Channel<(string Eng, UciOutput Line)> _dataChannel;
 
+    protected readonly List<string> _engineNames = [];
+    protected readonly Dictionary<string, int> _engineToIndex = [];
+
+    protected readonly List<(string, UciOutput)>[] _depthBuckets;
+    protected readonly BitArray[] _depthReached;
+
     protected Task? _ioHandlerTask;
     protected CancellationTokenSource _ioHandlerTokenSource;
 
@@ -28,6 +35,15 @@ public abstract class Controller
 
         BoundedChannelOptions channelOpts = new(256) { SingleReader = true };
         _dataChannel = Channel.CreateBounded<(string, UciOutput)>(channelOpts);
+
+        for (int i = 0; i < _engineCount; i++)
+        {
+            _engineNames.Add(EngineConfigs.Engines[i].Name);
+            _engineToIndex.Add(EngineConfigs.Engines[i].Name, i);
+        }
+        _depthBuckets = [.. Enumerable.Range(0, MaxDepth + 1).Select(_ => new List<(string, UciOutput)>(_engineCount))];
+        _depthReached = [.. Enumerable.Range(0, MaxDepth + 1).Select(_ => new BitArray(_engineCount))];
+
 
         LoadEngines();
         ResetOutputData();
